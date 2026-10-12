@@ -1,0 +1,6 @@
+{
+ "DEBUG OBJECT": {
+  "summary": "Get debugging information about a key",
+  "since": "1.0.0"
+ }
+}

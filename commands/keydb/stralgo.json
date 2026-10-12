@@ -1,0 +1,6 @@
+{
+ "STRALGO": {
+  "summary": "Run algorithms (currently LCS) against strings",
+  "since": "6.0.0"
+ }
+}

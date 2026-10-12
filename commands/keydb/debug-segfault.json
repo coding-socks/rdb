@@ -1,0 +1,6 @@
+{
+ "DEBUG SEGFAULT": {
+  "summary": "Make the server crash",
+  "since": "1.0.0"
+ }
+}

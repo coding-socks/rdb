@@ -1,0 +1,21 @@
+[submodule "lib/redis"]
+	path = lib/redis
+	url = git@github.com:redis/redis.git
+[submodule "lib/valkey"]
+	path = lib/valkey
+	url = git@github.com:valkey-io/valkey.git
+[submodule "lib/KeyDB"]
+	path = lib/KeyDB
+	url = git@github.com:Snapchat/KeyDB.git
+[submodule "lib/RedisTimeSeries"]
+	path = lib/RedisTimeSeries
+	url = git@github.com:RedisTimeSeries/RedisTimeSeries.git
+[submodule "lib/RediSearch"]
+	path = lib/RediSearch
+	url = git@github.com:RediSearch/RediSearch.git
+[submodule "lib/RedisJSON"]
+	path = lib/RedisJSON
+	url = git@github.com:RedisJSON/RedisJSON.git
+[submodule "lib/RedisBloom"]
+	path = lib/RedisBloom
+	url = git@github.com:RedisBloom/RedisBloom.git

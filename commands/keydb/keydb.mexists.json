@@ -1,0 +1,6 @@
+{
+ "KEYDB.MEXISTS": {
+  "summary": "Determine if a key exists",
+  "since": "6.5.12"
+ }
+}
