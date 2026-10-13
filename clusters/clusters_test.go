@@ -735,6 +735,10 @@ func liveReply(ctx context.Context, conn *resp.Client, args ...string) (resp.Tok
 //	redis-server --port 7003 --cluster-enabled yes --cluster-config-file nodes3.conf --cluster-announce-ip 127.0.0.1 --protected-mode no &
 //	sleep 1 && redis-cli --cluster create 127.0.0.1:7001 127.0.0.1:7002 127.0.0.1:7003 --cluster-yes && wait
 func TestCluster(t *testing.T) {
+	if testing.Short() {
+		t.Skip("the test runs a server in a Docker container")
+	}
+
 	startClusterContainer(t)
 
 	u, err := url.Parse(clusterURL)
