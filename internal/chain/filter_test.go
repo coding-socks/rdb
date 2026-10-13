@@ -23,8 +23,8 @@ func sameTokens(t *testing.T, got []Token, want []Token) {
 		switch w := w.(type) {
 		case Head:
 			head, ok := got[i].(Head)
-			if !ok || head.Kinds != w.Kinds {
-				t.Errorf("token %d = %v, want the head of %v", i, got[i], w.Kinds)
+			if !ok || head.Kind != w.Kind {
+				t.Errorf("token %d = %v, want the head of %v", i, got[i], w.Kind)
 			}
 		case rdb.Token:
 			g, ok := got[i].(rdb.Token)
@@ -90,7 +90,7 @@ func Test_Filter(t *testing.T) {
 			name:  "include keeps the matching keys and their metadata",
 			keeps: func(key string) bool { return key == "bar" },
 			in: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeAux), rdb.Str("redis-ver"), rdb.Str("7"),
 				rdb.Op(rdb.RedisOpCodeSelectDB), rdb.Uint(0),
 				rdb.Op(rdb.RedisOpCodeString), rdb.Str("foo"), rdb.Str("v1"),
@@ -99,7 +99,7 @@ func Test_Filter(t *testing.T) {
 				rdb.Op(rdb.RedisOpCodeEndOfRDB),
 			},
 			want: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeSelectDB), rdb.Uint(0),
 				rdb.Op(rdb.RedisOpCodeExpiryMilli), rdb.Expiry(1234),
 				rdb.Op(rdb.RedisOpCodeString), rdb.Str("bar"), rdb.Str("v2"),
@@ -110,7 +110,7 @@ func Test_Filter(t *testing.T) {
 			name:  "exclude drops the matching keys",
 			keeps: func(key string) bool { return key != "foo" },
 			in: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeAux), rdb.Str("redis-ver"), rdb.Str("7"),
 				rdb.Op(rdb.RedisOpCodeSelectDB), rdb.Uint(0),
 				rdb.Op(rdb.RedisOpCodeString), rdb.Str("foo"), rdb.Str("v1"),
@@ -119,7 +119,7 @@ func Test_Filter(t *testing.T) {
 				rdb.Op(rdb.RedisOpCodeEndOfRDB),
 			},
 			want: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeAux), rdb.Str("redis-ver"), rdb.Str("7"),
 				rdb.Op(rdb.RedisOpCodeSelectDB), rdb.Uint(0),
 				rdb.Op(rdb.RedisOpCodeExpiryMilli), rdb.Expiry(1234),
@@ -131,7 +131,7 @@ func Test_Filter(t *testing.T) {
 			name:  "a filter drops the keys it does not include",
 			keeps: func(key string) bool { return strings.HasPrefix(key, "user:") },
 			in: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeAux), rdb.Str("redis-ver"), rdb.Str("7"),
 				rdb.Op(rdb.RedisOpCodeSelectDB), rdb.Uint(0),
 				rdb.Op(rdb.RedisOpCodeString), rdb.Str("foo"), rdb.Str("v1"),
@@ -140,7 +140,7 @@ func Test_Filter(t *testing.T) {
 				rdb.Op(rdb.RedisOpCodeEndOfRDB),
 			},
 			want: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeSelectDB), rdb.Uint(0),
 				rdb.Op(rdb.RedisOpCodeEndOfRDB),
 			},
@@ -149,7 +149,7 @@ func Test_Filter(t *testing.T) {
 			name:  "the keys of a command come from the table of the dialect",
 			keeps: func(key string) bool { return key == "baz" },
 			in: []Token{
-				Head{Kinds: KindAOF, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindAOF, Dialect: rdb.RedisDialect{}},
 				aof.Token{[]byte("SELECT"), []byte("0")},
 				aof.Token{[]byte("FLUSHALL")},
 				aof.Token{[]byte("SET"), []byte("foo"), []byte("bar")},
@@ -159,7 +159,7 @@ func Test_Filter(t *testing.T) {
 				aof.Token{[]byte("SET"), []byte("baz"), []byte("qux")},
 			},
 			want: []Token{
-				Head{Kinds: KindAOF, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindAOF, Dialect: rdb.RedisDialect{}},
 				aof.Token{[]byte("SELECT"), []byte("0")},
 				aof.Token{[]byte("FLUSHALL")},
 				aof.Token{[]byte("SET"), []byte("baz"), []byte("qux")},
@@ -169,12 +169,12 @@ func Test_Filter(t *testing.T) {
 			name:  "the key of a scan token is its name",
 			keeps: func(key string) bool { return strings.HasPrefix(key, "only:") },
 			in: []Token{
-				Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindDump, Dialect: rdb.RedisDialect{}},
 				dump.Token{Key: []byte("only:a")},
 				dump.Token{Key: []byte("skip:b")},
 			},
 			want: []Token{
-				Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindDump, Dialect: rdb.RedisDialect{}},
 				dump.Token{Key: []byte("only:a")},
 			},
 		},
@@ -182,7 +182,7 @@ func Test_Filter(t *testing.T) {
 			name:  "a head of a kind the filter does not take fails",
 			keeps: func(key string) bool { return true },
 			in: []Token{
-				Head{Kinds: KindJSON},
+				Head{Kind: KindJSON},
 			},
 			wantErr: true,
 		},
@@ -201,13 +201,13 @@ func Test_Filter(t *testing.T) {
 			// snapshot and the commands of the incremental files, the
 			// filter follows both kinds in one stream.
 			in: []Token{
-				Head{Kinds: KindRDB | KindAOF, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB | KindAOF, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeString), rdb.Str("foo"), rdb.Str("v1"),
 				aof.Token{[]byte("SET"), []byte("foo"), []byte("bar")},
 				aof.Token{[]byte("SET"), []byte("baz"), []byte("qux")},
 			},
 			want: []Token{
-				Head{Kinds: KindRDB | KindAOF, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB | KindAOF, Dialect: rdb.RedisDialect{}},
 				aof.Token{[]byte("SET"), []byte("baz"), []byte("qux")},
 			},
 		},

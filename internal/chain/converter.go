@@ -35,8 +35,8 @@ type toRDB struct {
 func (d *toRDB) Process(t Token) error {
 	switch tt := t.(type) {
 	case Head:
-		tt.Kinds &= ^KindDump
-		tt.Kinds |= KindRDB
+		tt.Kind &= ^KindDump
+		tt.Kind |= KindRDB
 		d.dec = dump.NewDecoder(tt.Dialect)
 		return d.Dst.Process(tt)
 	case dump.Token:
@@ -87,8 +87,8 @@ type toAOF struct {
 func (e *toAOF) Process(t Token) error {
 	switch tt := t.(type) {
 	case Head:
-		tt.Kinds &= ^(KindDump | KindRDB)
-		tt.Kinds |= KindAOF
+		tt.Kind &= ^(KindDump | KindRDB)
+		tt.Kind |= KindAOF
 		e.dec = dump.NewDecoder(tt.Dialect)
 		return e.Dst.Process(tt)
 	case rdb.Token:
@@ -163,8 +163,8 @@ const (
 func (e *toDump) Process(t Token) error {
 	switch tt := t.(type) {
 	case Head:
-		tt.Kinds &= ^KindRDB
-		tt.Kinds |= KindDump
+		tt.Kind &= ^KindRDB
+		tt.Kind |= KindDump
 		e.enc = dump.NewEncoder(tt.Dialect)
 		return e.Dst.Process(tt)
 	case rdb.Token:
@@ -405,8 +405,8 @@ type toJSON struct {
 func (e *toJSON) Process(t Token) error {
 	switch tt := t.(type) {
 	case Head:
-		tt.Kinds &= ^(KindRDB | KindDump)
-		tt.Kinds |= KindJSON
+		tt.Kind &= ^(KindRDB | KindDump)
+		tt.Kind |= KindJSON
 		e.dec = dump.NewDecoder(tt.Dialect)
 		e.state.dialect = tt.Dialect
 		e.state.jout = append(e.state.jout, tt)

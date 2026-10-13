@@ -272,7 +272,7 @@ func TestRDBC_transfer(t *testing.T) {
 	t.Run("upload rdb", func(t *testing.T) {
 		srv := startMockServer(t)
 		path := writeFixture(t, "fixture.rdb", fixtureRDB(t, rdb.RedisDialect{}))
-		_, stderr, err := runCLI(t, "", "transfer", path, "redis://"+srv.addr())
+		_, stderr, err := runCLI(t, "", "transfer", "rdb", path, "server+restore", "redis://"+srv.addr())
 		if err != nil {
 			t.Fatalf("transfer error = %v\nstderr: %s", err, stderr)
 		}
@@ -290,7 +290,7 @@ func TestRDBC_transfer(t *testing.T) {
 	t.Run("upload aof", func(t *testing.T) {
 		srv := startMockServer(t)
 		path := writeFixture(t, "fixture.aof", fixtureAOF(t))
-		if _, _, err := runCLI(t, "", "transfer", path, "redis://"+srv.addr()); err == nil {
+		if _, _, err := runCLI(t, "", "transfer", "aof", path, "server+restore", "redis://"+srv.addr()); err == nil {
 			t.Error("the transfer of an AOF file to a server did not fail")
 		}
 	})
@@ -338,7 +338,7 @@ func TestRDBC_transfer(t *testing.T) {
 			}
 		}
 
-		stdout, stderr, err := runCLI(t, "", "transfer", "redis://"+addr, "rdb")
+		stdout, stderr, err := runCLI(t, "", "transfer", "server+sync", "redis://"+addr, "rdb", "-")
 		if err != nil {
 			t.Fatalf("transfer error = %v\nstderr: %s", err, stderr)
 		}
@@ -441,10 +441,10 @@ func TestRDBC_server(t *testing.T) {
 				t.Errorf("client wrote %q, want %q", stdout, want)
 			}
 
-			if _, stderr, err := runCLI(t, "", "transfer", "-include", "nomatch:*", path, "-dialect", srv.scheme, url); err != nil {
+			if _, stderr, err := runCLI(t, "", "transfer", "-include", "nomatch:*", "rdb", "-dialect", srv.scheme, path, "server+restore", url); err != nil {
 				t.Fatalf("transfer filtered upload error = %v\nstderr: %s", err, stderr)
 			}
-			stdout, stderr, err = runCLI(t, "", "transfer", url, "json")
+			stdout, stderr, err = runCLI(t, "", "transfer", "server+sync", url, "json", "-")
 			if err != nil {
 				t.Fatalf("filtered download error = %v\nstderr: %s", err, stderr)
 			}
@@ -452,10 +452,10 @@ func TestRDBC_server(t *testing.T) {
 				t.Errorf("the filtered transfer stored keys: %s", stdout)
 			}
 
-			if _, stderr, err := runCLI(t, "", "transfer", path, "-dialect", srv.scheme, url); err != nil {
+			if _, stderr, err := runCLI(t, "", "transfer", "rdb", "-dialect", srv.scheme, path, "server+restore", url); err != nil {
 				t.Fatalf("transfer upload error = %v\nstderr: %s", err, stderr)
 			}
-			stdout, stderr, err = runCLI(t, "", "transfer", url, "rdb")
+			stdout, stderr, err = runCLI(t, "", "transfer", "server+sync", url, "rdb", "-")
 			if err != nil {
 				t.Fatalf("transfer download error = %v\nstderr: %s", err, stderr)
 			}
@@ -463,7 +463,7 @@ func TestRDBC_server(t *testing.T) {
 			// The download is an RDB file with the keys of the
 			// server, the json of the file carries the key and the
 			// value of the fixture.
-			stdout, stderr, err = runCLI(t, stdout, "transfer", "rdb", "-dialect", srv.scheme, "json")
+			stdout, stderr, err = runCLI(t, stdout, "transfer", "rdb", "-dialect", srv.scheme, "-", "json", "-")
 			if err != nil {
 				t.Fatalf("open error = %v\nstderr: %s", err, stderr)
 			}
@@ -475,7 +475,7 @@ func TestRDBC_server(t *testing.T) {
 
 			// The dump strategy reads every key with the DUMP command, it
 			// synthesizes an RDB file in the dialect of the server.
-			stdout, stderr, err = runCLI(t, "", "transfer", url, "-strategy", "dump", "rdb")
+			stdout, stderr, err = runCLI(t, "", "transfer", "server+dump", url, "rdb", "-")
 			if err != nil {
 				t.Fatalf("transfer dump error = %v\nstderr: %s", err, stderr)
 			}
@@ -486,7 +486,7 @@ func TestRDBC_server(t *testing.T) {
 			// The aof strategy reads the value with the GET command
 			// of the type of the key, the commands of the aof stream
 			// store it again.
-			stdout, stderr, err = runCLI(t, "", "transfer", url, "-strategy", "aof", "aof")
+			stdout, stderr, err = runCLI(t, "", "transfer", "server+aof", url, "aof", "-")
 			if err != nil {
 				t.Fatalf("transfer aof error = %v\nstderr: %s", err, stderr)
 			}

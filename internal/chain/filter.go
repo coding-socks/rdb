@@ -43,8 +43,8 @@ type filter struct {
 
 func (f *filter) Process(t Token) error {
 	if head, ok := t.(Head); ok {
-		if head.Kinds&(KindRDB|KindAOF|KindDump) == 0 {
-			return fmt.Errorf("rdbc transfer: invalid kinds %v", head.Kinds)
+		if head.Kind&(KindRDB|KindAOF|KindDump) == 0 {
+			return fmt.Errorf("rdbc transfer: invalid kinds %v", head.Kind)
 		}
 		f.dialect = head.Dialect
 		return f.Dst.Process(head)

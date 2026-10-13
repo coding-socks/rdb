@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
@@ -9,6 +10,8 @@ import (
 	"io"
 	"math/rand/v2"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/coding-socks/rdb"
 	"github.com/coding-socks/rdb/aof"
@@ -84,8 +87,8 @@ func (d *RDBDst) Process(t Token) error {
 	default:
 		return fmt.Errorf("rdbc transfer: invalid token %T", t)
 	case Head:
-		if tt.Kinds != KindRDB {
-			return fmt.Errorf("rdbc transfer: invalid kinds %v", tt.Kinds)
+		if tt.Kind != KindRDB {
+			return fmt.Errorf("rdbc transfer: invalid kinds %v", tt.Kind)
 		}
 		d.dialect = tt.Dialect
 		return nil
@@ -124,8 +127,8 @@ func (d *JSONDst) Process(t Token) error {
 	default:
 		return fmt.Errorf("rdbc transfer: invalid token %T", t)
 	case Head:
-		if t.Kinds != KindJSON {
-			return fmt.Errorf("rdbc transfer: invalid kinds %v", t.Kinds)
+		if t.Kind != KindJSON {
+			return fmt.Errorf("rdbc transfer: invalid kinds %v", t.Kind)
 		}
 		return nil
 	case jsontext.Token:
@@ -163,8 +166,8 @@ func (d *AOFDst) Process(t Token) error {
 	default:
 		return fmt.Errorf("rdbc transfer: invalid token %T", t)
 	case Head:
-		if tt.Kinds != KindAOF {
-			return fmt.Errorf("rdbc transfer: invalid kinds %v", tt.Kinds)
+		if tt.Kind != KindAOF {
+			return fmt.Errorf("rdbc transfer: invalid kinds %v", tt.Kind)
 		}
 		return nil
 	case aof.Token:
@@ -195,13 +198,21 @@ func (d *AOFDst) Finish() error {
 // Abort does nothing, the caller of the chain owns the writer.
 func (d *AOFDst) Abort(err error) {}
 
-// ManifestDst writes a manifest archive. The tokens of the [KindRDB]
-// kind are its base snapshot, and the commands of the [KindAOF] kind
-// are its incremental file. The base snapshot is written in the
-// dialect of its head.
+// ManifestDst writes a manifest archive on a tar writer. The tokens
+// of the [KindRDB] kind are its base snapshot, and the commands of
+// the [KindAOF] kind are its incremental file. The base snapshot is
+// written in the dialect of its head. The archive of a head of both
+// kinds leads with the manifest file and carries the base snapshot
+// and one incremental file, the archive of a head of the RDB kind
+// alone carries the base snapshot only. The manifest file is written
+// with the head, the files of the transfer are written with the end
+// of the stream, the size of an entry is the one datum a tar header
+// needs ahead of its data. Finish ends the archive, the caller wraps
+// the tar writer in a gzip writer when the file of the archive is
+// compressed.
 type ManifestDst struct {
-	out io.Writer
-
+	tw      *tar.Writer
+	kind    Kind
 	dialect rdb.Dialect
 	base    bytes.Buffer
 	incr    bytes.Buffer
@@ -209,22 +220,33 @@ type ManifestDst struct {
 	incrEnc *resp.RESP3Encoder
 }
 
-// NewManifestDst constructs a ManifestDst writing to w.
+// NewManifestDst constructs a ManifestDst writing on the tar writer
+// of the caller.
 func NewManifestDst(w io.Writer) *ManifestDst {
-	return &ManifestDst{out: w}
+	return &ManifestDst{tw: tar.NewWriter(w)}
 }
 
-// Process receives one token of the archive. The head of the base
-// snapshot binds its dialect.
+// Process receives one token of the archive. The head binds the
+// dialect of the base snapshot and writes the manifest file of an
+// archive of both kinds.
 func (d *ManifestDst) Process(t Token) error {
 	switch tt := t.(type) {
 	default:
 		return fmt.Errorf("rdbc transfer: invalid token %T, want RDB or AOF", tt)
 	case Head:
-		if tt.Kinds&(KindRDB|KindAOF) == 0 {
-			return fmt.Errorf("rdbc transfer: invalid kinds %s", tt.Kinds)
+		if tt.Kind&KindRDB == 0 || tt.Kind&^(KindRDB|KindAOF) != 0 {
+			return fmt.Errorf("rdbc transfer: invalid kinds %s", tt.Kind)
 		}
+		d.kind = tt.Kind
 		d.dialect = tt.Dialect
+		if d.kind&KindAOF != 0 {
+			var manifest strings.Builder
+			fmt.Fprintf(&manifest, "file %s seq 1 type b\n", "appendonly.aof.1.base.rdb")
+			fmt.Fprintf(&manifest, "file %s seq 1 type i\n", fmt.Sprintf("appendonly.aof.%d.incr.aof", 1))
+			if err := d.writeEntry(manifestEntry{"appendonly.aof.manifest", []byte(manifest.String())}); err != nil {
+				return err
+			}
+		}
 		return nil
 	case rdb.Token:
 		if d.baseEnc == nil {
@@ -235,6 +257,9 @@ func (d *ManifestDst) Process(t Token) error {
 		}
 		return d.baseEnc.WriteToken(tt)
 	case aof.Token:
+		if d.kind&KindAOF == 0 {
+			return fmt.Errorf("rdbc transfer: invalid token %T, the manifest takes %s", t, d.kind)
+		}
 		if d.incrEnc == nil {
 			d.incrEnc = resp.NewRESP3Encoder(&d.incr)
 		}
@@ -250,46 +275,68 @@ func (d *ManifestDst) Process(t Token) error {
 	}
 }
 
-// Finish writes the archive. It returns an error when the stream
+// writeEntry writes one file of the archive.
+func (d *ManifestDst) writeEntry(e manifestEntry) error {
+	if err := d.tw.WriteHeader(&tar.Header{
+		Name:    e.name,
+		Mode:    0o644,
+		Size:    int64(len(e.data)),
+		ModTime: time.Now(),
+	}); err != nil {
+		return err
+	}
+	_, err := d.tw.Write(e.data)
+	return err
+}
+
+// Finish writes the files of the transfer and ends the archive with
+// the end of the tar writer. It returns an error when the stream
 // carried no base snapshot.
 func (d *ManifestDst) Finish() error {
+	defer d.tw.Close()
 	if d.baseEnc == nil {
 		return errors.New("rdbc transfer: premature end, missing RDB snapshot")
 	}
-	var incrs [][]byte
-	if d.incr.Len() > 0 {
-		if err := d.incrEnc.Flush(); err != nil {
+	if err := d.writeEntry(manifestEntry{"appendonly.aof.1.base.rdb", d.base.Bytes()}); err != nil {
+		return err
+	}
+	if d.kind&KindAOF != 0 {
+		if d.incrEnc != nil {
+			if err := d.incrEnc.Flush(); err != nil {
+				return err
+			}
+		}
+		if err := d.writeEntry(manifestEntry{fmt.Sprintf("appendonly.aof.%d.incr.aof", 1), d.incr.Bytes()}); err != nil {
 			return err
 		}
-		incrs = [][]byte{d.incr.Bytes()}
 	}
-	return manifestWriter(d.out, d.base.Bytes(), incrs)
+	return nil
 }
 
 // Abort does nothing, the caller of the chain owns the writer.
-func (d *ManifestDst) Abort(err error) {}
+func (d *ManifestDst) Abort(err error) {
+	d.tw.Close()
+}
 
-// ServerDst stores the keys in the nodes of a cluster: the slot of
-// every key selects the node that receives its command. The keys of
-// a scan become the RESTORE commands of their payloads, the commands
-// of an AOF stream are sent as they are and routed by the key the
-// table of the cluster extracts, a command whose keys cannot be
-// decided goes to one of the nodes. Every node batches the commands
-// of its keys, the replies are read after each batch.
+// ServerDst stores the keys in the nodes of a cluster. It can
+// accept [KindDump] and [KindAOF] tokens. The supported token
+// kind list can be reduced using kind.
 type ServerDst struct {
-	ctx context.Context
-	c   *clusters.Cluster // the cluster the keys are routed in
+	ctx  context.Context
+	c    *clusters.Cluster // the cluster the keys are routed in
+	kind Kind
 
 	batchN  int
 	batches map[*resp.Client]int // the commands of a batch, one batch per connection
 }
 
-// NewServerDst starts the destination on the nodes of the cluster. The
-// cluster owns the connections of its nodes, and the context bounds
-// the reads of the replies.
-func NewServerDst(ctx context.Context, c *clusters.Cluster) *ServerDst {
+// NewServerDst starts the destination on the nodes of the cluster
+// with the kinds it takes. The cluster owns the connections of its
+// nodes, and the context bounds the reads of the replies.
+func NewServerDst(ctx context.Context, c *clusters.Cluster, kind Kind) *ServerDst {
 	return &ServerDst{
 		ctx:     ctx,
+		kind:    kind & (KindDump | KindAOF),
 		batchN:  500,
 		c:       c,
 		batches: make(map[*resp.Client]int),
@@ -307,14 +354,17 @@ func (d *ServerDst) Process(t Token) error {
 	default:
 		return fmt.Errorf("rdbc transfer: invalid token %T", t)
 	case Head:
-		if tt.Kinds&(KindDump|KindAOF) == 0 {
-			return fmt.Errorf("rdbc transfer: invalid kinds %v", tt.Kinds)
+		if tt.Kind == 0 || tt.Kind&^d.kind != 0 {
+			return fmt.Errorf("rdbc transfer: invalid kinds %s, the server takes %s", tt.Kind, d.kind)
 		}
 		if tt.Dialect.WithVersion(0) != d.c.Dialect().WithVersion(0) {
 			return fmt.Errorf("rdbc transfer: invalid dialect %T", tt.Dialect)
 		}
 		return nil
 	case dump.Token:
+		if d.kind&KindDump == 0 {
+			return fmt.Errorf("rdbc transfer: invalid token %T, the server takes %s", t, d.kind)
+		}
 		n, err := d.c.Target(tt.Key)
 		if err != nil {
 			return err
@@ -328,6 +378,9 @@ func (d *ServerDst) Process(t Token) error {
 		}
 		return nil
 	case aof.Token:
+		if d.kind&KindAOF == 0 {
+			return fmt.Errorf("rdbc transfer: invalid token %T, the server takes %s", t, d.kind)
+		}
 		keys, err := d.c.Keys(tt...)
 		if err != nil {
 			return err

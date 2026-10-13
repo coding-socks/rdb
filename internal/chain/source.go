@@ -118,7 +118,7 @@ func (s *RDBFileSrc) Run(ctx context.Context, dst Dst) error {
 	if err != nil {
 		return err
 	}
-	if err := dst.Process(Head{Kinds: KindRDB, Dialect: dialect}); err != nil {
+	if err := dst.Process(Head{Kind: KindRDB, Dialect: dialect}); err != nil {
 		return err
 	}
 	if f, ok := s.r.(*os.File); ok {
@@ -175,12 +175,15 @@ type AOFFileSrc struct {
 
 // NewAOFFileSrc constructs an AOFFileSrc reading from r.
 func NewAOFFileSrc(r io.Reader, dialect rdb.Dialect) *AOFFileSrc {
+	if dialect == nil {
+		dialect = rdb.RedisDialect{}
+	}
 	return &AOFFileSrc{r: r, dialect: dialect}
 }
 
 func (s *AOFFileSrc) Run(ctx context.Context, dst Dst) error {
 	dec := aof.NewReader(&countReader{r: s.r, n: &s.i})
-	if err := dst.Process(Head{Kinds: KindAOF, Dialect: s.dialect}); err != nil {
+	if err := dst.Process(Head{Kind: KindAOF, Dialect: s.dialect}); err != nil {
 		return err
 	}
 	if f, ok := s.r.(*os.File); ok {
@@ -262,7 +265,7 @@ func (s *ManifestSrc) Run(ctx context.Context, dst Dst) error {
 	if len(incrs) > 0 {
 		kinds |= KindAOF
 	}
-	if err := dst.Process(Head{Kinds: kinds, Dialect: dialect}); err != nil {
+	if err := dst.Process(Head{Kind: kinds, Dialect: dialect}); err != nil {
 		return err
 	}
 	for {
@@ -359,7 +362,7 @@ func (s *DumpServerSrc) Run(ctx context.Context, dst Dst) error {
 	if s.keyspace {
 		kinds |= KindAOF
 	}
-	if err := dst.Process(Head{Kinds: kinds, Dialect: s.cluster.Dialect()}); err != nil {
+	if err := dst.Process(Head{Kind: kinds, Dialect: s.cluster.Dialect()}); err != nil {
 		return err
 	}
 	for i, n := range s.cluster.All() {
@@ -514,7 +517,7 @@ func NewAOFServerSrc(c *clusters.Cluster, opts ...ServerOption) *AOFServerSrc {
 }
 
 func (s *AOFServerSrc) Run(ctx context.Context, dst Dst) error {
-	if err := dst.Process(Head{Kinds: KindAOF, Dialect: s.cluster.Dialect()}); err != nil {
+	if err := dst.Process(Head{Kind: KindAOF, Dialect: s.cluster.Dialect()}); err != nil {
 		return err
 	}
 	_, keydb := s.cluster.Dialect().(rdb.KeyDBDialect)
@@ -1348,7 +1351,7 @@ func NewSyncServerSrc(c *clusters.Cluster) *SyncServerSrc {
 }
 
 func (s *SyncServerSrc) Run(ctx context.Context, dst Dst) error {
-	if err := dst.Process(Head{Kinds: KindRDB, Dialect: s.cluster.Dialect()}); err != nil {
+	if err := dst.Process(Head{Kind: KindRDB, Dialect: s.cluster.Dialect()}); err != nil {
 		return err
 	}
 	for i, n := range s.cluster.All() {

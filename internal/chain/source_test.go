@@ -1,6 +1,7 @@
 package chain
 
 import (
+	"archive/tar"
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
@@ -244,7 +245,7 @@ func TestDumpSrc_Run(t *testing.T) {
 			t.Fatalf("the stream produced %d tokens, want the head and two keys", len(toks))
 		}
 		head, ok := toks[0].(Head)
-		if !ok || head.Kinds != KindDump {
+		if !ok || head.Kind != KindDump {
 			t.Fatalf("the first token = %v, want the dump head", toks[0])
 		}
 		for i, key := range []string{"k1", "k2"} {
@@ -347,12 +348,13 @@ func TestManifestSrc_Progress(t *testing.T) {
 		rdb.Op(rdb.RedisOpCodeEndOfRDB),
 	).(*bytes.Buffer).Bytes()
 	incr := []byte("*3\r\n$3\r\nSET\r\n$3\r\nfoo\r\n$3\r\nbar\r\n")
-	var archive bytes.Buffer
-	if err := manifestWriter(&archive, base, [][]byte{incr, incr}); err != nil {
-		t.Fatal(err)
-	}
+	archive := bytes.NewBuffer(writeArchive(t,
+		manifestEntry{"appendonly.aof.1.base.rdb", base},
+		manifestEntry{"appendonly.aof.1.incr.aof", incr},
+		manifestEntry{"appendonly.aof.2.incr.aof", incr},
+	))
 
-	src := NewManifestSrc(&archive, nil)
+	src := NewManifestSrc(archive, nil)
 	if err := src.Run(t.Context(), NewRecorderDst()); !errors.Is(err, io.EOF) {
 		t.Fatalf("Run() error = %v, want io.EOF", err)
 	}
@@ -364,6 +366,30 @@ func TestManifestSrc_Progress(t *testing.T) {
 	if got := src.Progress(); !slices.Equal(got, want) {
 		t.Errorf("Progress() = %v, want %v", got, want)
 	}
+}
+
+// writeArchive writes the files of a manifest archive in the order
+// they are given.
+func writeArchive(t *testing.T, entries ...manifestEntry) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for _, e := range entries {
+		if err := tw.WriteHeader(&tar.Header{Name: e.name, Mode: 0o644, Size: int64(len(e.data))}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write(e.data); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 // TestAOFServerSrc reads the keyspace of a real server in a Docker

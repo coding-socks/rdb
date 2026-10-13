@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/coding-socks/rdb"
+	"github.com/coding-socks/rdb/aof"
 	"github.com/coding-socks/rdb/clusters"
 	"github.com/coding-socks/rdb/dump"
 	"github.com/coding-socks/rdb/resp"
@@ -18,7 +19,7 @@ func Test_RDBDst_Process(t *testing.T) {
 	t.Run("the head names the dialect of the file", func(t *testing.T) {
 		var buf bytes.Buffer
 		d := NewRDBDst(&buf)
-		if err := d.Process(Head{Kinds: KindRDB, Dialect: rdb.ValkeyDialect{V: 80}}); err != nil {
+		if err := d.Process(Head{Kind: KindRDB, Dialect: rdb.ValkeyDialect{V: 80}}); err != nil {
 			t.Fatal(err)
 		}
 		if err := d.Process(rdb.Op(rdb.RedisOpCodeEndOfRDB)); err != nil {
@@ -34,7 +35,7 @@ func Test_RDBDst_Process(t *testing.T) {
 		name  string
 		token Token
 	}{
-		{name: "a head of another kind fails", token: Head{Kinds: KindJSON, Dialect: rdb.RedisDialect{}}},
+		{name: "a head of another kind fails", token: Head{Kind: KindJSON, Dialect: rdb.RedisDialect{}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,13 +51,10 @@ func Test_ManifestDst_Process(t *testing.T) {
 	t.Run("the base snapshot is written in the dialect of the head", func(t *testing.T) {
 		var buf bytes.Buffer
 		d := NewManifestDst(&buf)
-		if err := d.Process(Head{Kinds: KindRDB, Dialect: rdb.ValkeyDialect{V: 80}}); err != nil {
+		if err := d.Process(Head{Kind: KindRDB, Dialect: rdb.ValkeyDialect{V: 80}}); err != nil {
 			t.Fatal(err)
 		}
 		if err := d.Process(rdb.Op(rdb.RedisOpCodeEndOfRDB)); err != nil {
-			t.Fatal(err)
-		}
-		if err := d.Process(Head{Kinds: KindAOF, Dialect: rdb.ValkeyDialect{V: 80}}); err != nil {
 			t.Fatal(err)
 		}
 		if err := d.Finish(); err != nil {
@@ -71,11 +69,20 @@ func Test_ManifestDst_Process(t *testing.T) {
 		}
 	})
 
+	t.Run("a head of the base and the increments is accepted", func(t *testing.T) {
+		var buf bytes.Buffer
+		d := NewManifestDst(&buf)
+		if err := d.Process(Head{Kind: KindRDB | KindAOF, Dialect: rdb.RedisDialect{}}); err != nil {
+			t.Errorf("Process() with a mixed head error = %v", err)
+		}
+	})
+
 	tests := []struct {
 		name  string
 		token Token
 	}{
-		{name: "a head of another kind fails", token: Head{Kinds: KindJSON, Dialect: rdb.RedisDialect{}}},
+		{name: "a head of another kind fails", token: Head{Kind: KindJSON, Dialect: rdb.RedisDialect{}}},
+		{name: "a head of only the increments fails", token: Head{Kind: KindAOF, Dialect: rdb.RedisDialect{}}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -92,19 +99,16 @@ func Test_ManifestDst_Process(t *testing.T) {
 		if err := d.Finish(); err == nil {
 			t.Error("Finish() without a base snapshot did not fail")
 		}
-		if buf.Len() != 0 {
-			t.Errorf("the end wrote %q, want nothing", buf.Bytes())
-		}
 	})
 }
 
 func Test_JSONDst_Process(t *testing.T) {
 	var buf bytes.Buffer
 	d := NewJSONDst(&buf)
-	if err := d.Process(Head{Kinds: KindJSON, Dialect: rdb.RedisDialect{}}); err != nil {
+	if err := d.Process(Head{Kind: KindJSON, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Errorf("Process() with the JSON head error = %v", err)
 	}
-	if err := d.Process(Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}}); err == nil {
+	if err := d.Process(Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}}); err == nil {
 		t.Error("Process() with an RDB head did not fail")
 	}
 	if err := d.Finish(); err != nil {
@@ -115,10 +119,10 @@ func Test_JSONDst_Process(t *testing.T) {
 func Test_AOFDst_Process(t *testing.T) {
 	var buf bytes.Buffer
 	d := NewAOFDst(&buf)
-	if err := d.Process(Head{Kinds: KindAOF, Dialect: rdb.RedisDialect{}}); err != nil {
+	if err := d.Process(Head{Kind: KindAOF, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Errorf("Process() with the AOF head error = %v", err)
 	}
-	if err := d.Process(Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}}); err == nil {
+	if err := d.Process(Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}}); err == nil {
 		t.Error("Process() with an RDB head did not fail")
 	}
 	if err := d.Finish(); err != nil {
@@ -131,15 +135,16 @@ func Test_ServerDst_Process(t *testing.T) {
 	server := resptest.NewServer(t, nil)
 	client := server.Client()
 	client.SetDialect(rdb.ValkeyDialect{})
-	d := NewServerDst(t.Context(), clusters.Single(client))
+	d := NewServerDst(t.Context(), clusters.Single(client), KindDump)
 	for _, tt := range []struct {
 		name    string
 		arg     Head
 		wantErr bool
 	}{
-		{name: "matching", arg: Head{Kinds: KindDump, Dialect: rdb.ValkeyDialect{}}},
-		{name: "another family", arg: Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}}, wantErr: true},
-		{name: "another kind", arg: Head{Kinds: KindJSON, Dialect: rdb.ValkeyDialect{}}, wantErr: true},
+		{name: "matching", arg: Head{Kind: KindDump, Dialect: rdb.ValkeyDialect{}}},
+		{name: "another family", arg: Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}, wantErr: true},
+		{name: "another kind", arg: Head{Kind: KindJSON, Dialect: rdb.ValkeyDialect{}}, wantErr: true},
+		{name: "a kind the strategy does not take", arg: Head{Kind: KindAOF, Dialect: rdb.ValkeyDialect{}}, wantErr: true},
 	} {
 		t.Run("a head of "+tt.name+" fails", func(t *testing.T) {
 			if err := d.Process(tt.arg); (err != nil) != tt.wantErr {
@@ -180,9 +185,9 @@ func Test_ServerDst_route(t *testing.T) {
 		t.Fatalf("Upgrade() error = %v", err)
 	}
 	defer c.Close()
-	d := NewServerDst(t.Context(), c)
+	d := NewServerDst(t.Context(), c, KindDump)
 	d.SetBatchN(1)
-	if err := d.Process(Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
+	if err := d.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
 	// The slot of the key bar is 5061, the one of foo is 12182.
@@ -211,13 +216,49 @@ func Test_ServerDst_errorReply(t *testing.T) {
 		return mux
 	}())
 	c := clusters.Single(server.Client())
-	d := NewServerDst(t.Context(), c)
+	d := NewServerDst(t.Context(), c, KindDump)
 	d.SetBatchN(1)
-	if err := d.Process(Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
+	if err := d.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
 	err := d.Process(dump.Token{Key: []byte("bar"), Payload: []byte("payload")})
 	if err == nil || !strings.Contains(err.Error(), "invalid payload") {
 		t.Errorf("Process() error = %v, want it to contain %q", err, "invalid payload")
 	}
+}
+
+func Test_ServerDst_strategyKind(t *testing.T) {
+	// The strategy of the destination names the kinds it takes, a
+	// token of another kind fails the transfer before the server
+	// reads one command of it.
+	server := resptest.NewServer(t, nil)
+	client := server.Client()
+	client.SetDialect(rdb.RedisDialect{})
+
+	t.Run("a restore server takes no aof command", func(t *testing.T) {
+		d := NewServerDst(t.Context(), clusters.Single(client), KindDump)
+		if err := d.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
+			t.Fatalf("Process() error = %v", err)
+		}
+		if err := d.Process(aof.Token{[]byte("SET"), []byte("foo"), []byte("bar")}); err == nil {
+			t.Error("Process() with an aof command did not fail")
+		}
+	})
+
+	t.Run("an aof server takes no key of a scan", func(t *testing.T) {
+		d := NewServerDst(t.Context(), clusters.Single(client), KindAOF)
+		if err := d.Process(Head{Kind: KindAOF, Dialect: rdb.RedisDialect{}}); err != nil {
+			t.Fatalf("Process() error = %v", err)
+		}
+		if err := d.Process(dump.Token{Key: []byte("foo"), Payload: []byte("payload"), TTL: -1}); err == nil {
+			t.Error("Process() with a key of a scan did not fail")
+		}
+	})
+
+	t.Run("a restore+aof server takes both", func(t *testing.T) {
+		d := NewServerDst(t.Context(), clusters.Single(client), KindDump|KindAOF)
+		if err := d.Process(Head{Kind: KindDump | KindAOF, Dialect: rdb.RedisDialect{}}); err != nil {
+			t.Fatalf("Process() error = %v", err)
+		}
+	})
 }

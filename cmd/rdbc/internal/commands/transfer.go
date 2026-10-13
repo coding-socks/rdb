@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"compress/gzip"
 	"context"
 	"errors"
 	"flag"
@@ -8,6 +9,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -21,36 +23,61 @@ import (
 	"golang.org/x/term"
 )
 
-// transferSchemes are the url schemes of a Redis compatible server,
-// their s variants connect over TLS.
-var transferSchemes = map[string]bool{
-	"redis":   true,
-	"rediss":  true,
-	"valkey":  true,
-	"valkeys": true,
-	"keydb":   true,
-	"keydbs":  true,
-}
-
 func Transfer(ctx context.Context, args []string) error {
-	const transferUsage = `usage: rdbc transfer [-include GLOB] [-exclude GLOB] SRC [SRC_FLAGS] DST [DST_FLAGS]
+	const transferUsage = `usage: rdbc transfer [-include GLOB] [-exclude GLOB] SRC [SRC_FLAGS] {<SRC_FILE | SRC_URL>} DST [DST_FLAGS] {DST_FILE | DST_URL}
 
 Transfers the keys between files and Redis compatible servers, KeyDB
 and Valkey included.
 
-SRC and DST are a bare name, which reads stdin or writes stdout, a
-file path whose extension selects the strategy (.rdb, .aof, .json,
-.manifest.tar, .manifest.tar.gz or .manifest.tgz), or the url of a
-server of the form redis://user:pass@host:port. The s variants
-rediss://, keydbs:// and valkeys:// connect over TLS, the query
-parameter insecure=true skips the verification of the TLS
+source: SRC [SRC_FLAGS] {<SRC_FILE | SRC_URL>}
+  rdb [-dialect DIALECT] SRC_FILE
+  aof [-dialect DIALECT] SRC_FILE
+  manifest [-dialect DIALECT] SRC_FILE
+  server+sync [-cluster] SRC_URL
+  server+dump [-cluster] [-keyspace] SRC_URL
+  server+aof [-cluster] [-keyspace] SRC_URL
+
+destination: DST [DST_FLAGS] {DST_FILE | DST_URL}
+  rdb DST_FILE
+  aof DST_FILE
+  json DST_FILE
+  manifest DST_FILE
+  server [-cluster] [-batch BATCH] DST_URL
+  server+restore [-cluster] [-batch BATCH] DST_URL
+  server+aof [-cluster] [-batch BATCH] DST_URL
+
+The keys of the transfer can be filtered. The added filters use
+github.com/gobwas/glob to parse GLOB. By default all keys are included.
+
+SRC_FILE and DST_FILE accept a file path or ` + "`-`" + ` for stdin/stdout.
+
+SRC_URL and DST_URL accept a url in redis://user:pass@host:port form.
+The s variants rediss://, keydbs:// and valkeys:// connect over TLS,
+the query parameter insecure=true skips the verification of the TLS
 certificate of the server, the user parameters execute the AUTH
 command.
 
-The keys of the transfer pass the filters: a key is transferred when
-it matches the include glob and no exclude glob, a command without a
-key is always transferred. A transfer of mixed dialects is rejected.
+For compatibility, some types can be converted to other types.
+╔═══════════════╦══════╤═══════╤══════╤══════════╤════════════════╤════════════╤════════╗
+║ SRC ↓ / DST → ║ rdb  │ json  │ aof  │ manifest │ server+restore │ server+aof │ server ║
+╠═══════════════╬══════╪═══════╪══════╪══════════╪════════════════╪════════════╪════════╣
+║ rdb           ║ ✓    │ ⟶json │ ⟶aof │ ✓        │ ⟶dump          │ ⟶aof       │ ⟶dump  ║
+║ aof           ║ ✗    │ ✗     │ ✓    │ ✗        │ ✗              │ ✓          │ ✓      ║
+║ manifest      ║ ✗    │ ✗     │ ⟶aof │ ✓        │ ✗              │ ⟶aof       │ ⟶dump  ║
+║ server+sync   ║ ✓    │ ⟶json │ ⟶aof │ ✓        │ ⟶dump          │ ⟶aof       │ ⟶dump  ║
+║ server+dump   ║ ⟶rdb │ ⟶json │ ⟶aof │ ⟶rdb     │ ✓              │ ⟶aof       │ ✓      ║
+║ └ keyspace    ║ ✗    │ ✗     │ ⟶aof │ ✓        │ ✗              │ ⟶aof       │ ✓.     ║
+║ server+aof    ║ ✗    │ ✗     │ ✓    │ ✗        │ ✗              │ ✓          │ ✓.     ║
+║ └ keyspace    ║ ✗    │ ✗     │ ✓    │ ✗        │ ✗              │ ✓          │ ✓.     ║
+╚═══════════════╩══════╧═══════╧══════╧══════════╧════════════════╧════════════╧════════╝
+
+example:
+  rdbc transfer server+sync -cluster redis://127.0.0.1:6379 rdb /path/to/dump.rdb
+  rdbc transfer -exclude 'user:*' rdb /path/to/dump.rdb json -
 `
+	// TODO: offer functionality for SNI, a trusted cert store,
+	//  and client certificate authentication
+
 	fs := flag.NewFlagSet("transfer", flag.ExitOnError)
 	var include includeFlag
 	var exclude excludeFlag
@@ -91,16 +118,12 @@ key is always transferred. A transfer of mixed dialects is rejected.
 	if err != nil {
 		return err
 	}
-	if closeSrc != nil {
-		defer closeSrc.Close()
-	}
+	defer closeSrc.Close()
 	d, closeDst, err := dst.Make(ctx)
 	if err != nil {
 		return err
 	}
-	if closeDst != nil {
-		defer closeDst.Close()
-	}
+	defer closeDst.Close()
 
 	if conv != ConverterNone {
 		d = converters[conv](d)
@@ -260,426 +283,397 @@ func (m transferModel) stepView(i int) string {
 	return m.spinner.View()
 }
 
-// srcMaker opens the source the argument of the command line
-// selects.
-type srcMaker interface {
-	Make(ctx context.Context) (chain.Src, io.Closer, error)
-}
-
-// srcCmd is the source of a transfer: the maker the argument of the
-// command line selects, the kinds of the chain the source carries and
-// the flags that follow it. Make opens the source and returns it with
-// the resource it opened, nil when the source reads stdin. The caller
-// closes the resource when the transfer ended.
-type srcCmd struct {
-	srcMaker
-	kinds chain.Kind
-	rest  []string // the arguments of the destination
-}
-
-// Kinds returns the kinds of the chain the source carries.
-func (s srcCmd) Kinds() chain.Kind { return s.kinds }
-
-// Args returns the arguments that follow the source: the argument and
-// the flags of the destination.
-func (s srcCmd) Args() []string { return s.rest }
-
-// serverSrc dials the cluster of a server url, the dialect is the one
-// the scheme of the url names.
-type serverSrc struct {
-	url    *url.URL
-	dialer dialer
-}
-
-// serverSyncSrc reads the RDB payload of the SYNC command of every
-// node of the cluster.
-type serverSyncSrc struct{ serverSrc }
-
-func (s serverSyncSrc) Make(ctx context.Context) (chain.Src, io.Closer, error) {
-	c, err := s.dialer.Dial(ctx, s.url, 3)
-	if err != nil {
-		return nil, nil, err
-	}
-	return chain.NewSyncServerSrc(c), c, nil
-}
-
-// serverDumpSrc scans the keyspace of every node of the cluster, one
-// key with the TYPE, PTTL and DUMP commands.
-type serverDumpSrc struct {
-	serverSrc
-	keyspace bool
-}
-
-func (s serverDumpSrc) Make(ctx context.Context) (chain.Src, io.Closer, error) {
-	c, err := s.dialer.Dial(ctx, s.url, 3)
-	if err != nil {
-		return nil, nil, err
-	}
-	if s.keyspace {
-		return chain.NewDumpServerSrc(c, chain.WithKeyspace()), c, nil
-	}
-	return chain.NewDumpServerSrc(c), c, nil
-}
-
-// serverAOFSrc reads every key of the keyspace with the read command
-// of its type.
-type serverAOFSrc struct {
-	serverSrc
-	keyspace bool
-}
-
-func (s serverAOFSrc) Make(ctx context.Context) (chain.Src, io.Closer, error) {
-	c, err := s.dialer.Dial(ctx, s.url, 3)
-	if err != nil {
-		return nil, nil, err
-	}
-	if s.keyspace {
-		return chain.NewAOFServerSrc(c, chain.WithKeyspace()), c, nil
-	}
-	return chain.NewAOFServerSrc(c), c, nil
-}
-
-// fileSrc opens the file of a source, the bare names read stdin.
-type fileSrc struct {
-	file    string // empty reads stdin
-	dialect rdb.Dialect
-}
-
-// open reads the file of the source, os.Stdin when the name is bare.
-func (s fileSrc) open() (io.Reader, io.Closer, error) {
-	if s.file == "" {
-		return os.Stdin, nil, nil
-	}
-	f, err := os.Open(s.file)
-	if err != nil {
-		return nil, nil, err
-	}
-	return f, f, nil
-}
-
-// rdbFileSrc decodes the records of an RDB file.
-type rdbFileSrc struct{ fileSrc }
-
-func (s rdbFileSrc) Make(context.Context) (chain.Src, io.Closer, error) {
-	r, closer, err := s.open()
-	if err != nil {
-		return nil, nil, err
-	}
-	return chain.NewRDBFileSrc(r, s.dialect), closer, nil
-}
-
-// aofFileSrc decodes the commands of an AOF file.
-type aofFileSrc struct{ fileSrc }
-
-func (s aofFileSrc) Make(context.Context) (chain.Src, io.Closer, error) {
-	r, closer, err := s.open()
-	if err != nil {
-		return nil, nil, err
-	}
-	return chain.NewAOFFileSrc(r, s.dialect), closer, nil
-}
-
-// manifestFileSrc decodes the base snapshot and the incremental
-// commands of a manifest archive.
-type manifestFileSrc struct{ fileSrc }
-
-func (s manifestFileSrc) Make(context.Context) (chain.Src, io.Closer, error) {
-	r, closer, err := s.open()
-	if err != nil {
-		return nil, nil, err
-	}
-	return chain.NewManifestSrc(r, s.dialect), closer, nil
-}
-
 type dialer interface {
-	Dial(ctx context.Context, u *url.URL, p int) (*clusters.Cluster, error)
+	Dial(ctx context.Context, p int) (*clusters.Cluster, error)
 }
 
-type dialerSingle struct{}
+type dialerSingle struct{ u *url.URL }
 
-func (s dialerSingle) Dial(ctx context.Context, u *url.URL, p int) (*clusters.Cluster, error) {
-	c, err := resp.Dial(ctx, u, 3)
+func (s dialerSingle) Dial(ctx context.Context, p int) (*clusters.Cluster, error) {
+	c, err := resp.Dial(ctx, s.u, 3)
 	if err != nil {
 		return nil, err
 	}
 	return clusters.Single(c), nil
 }
 
-type dialerCluster struct{}
+type dialerCluster struct{ u *url.URL }
 
-func (c dialerCluster) Dial(ctx context.Context, u *url.URL, p int) (*clusters.Cluster, error) {
-	return clusters.Dial(ctx, u, 3)
+func (c dialerCluster) Dial(ctx context.Context, p int) (*clusters.Cluster, error) {
+	return clusters.Dial(ctx, c.u, p)
 }
 
-// parseSrcCmd sets the maker the argument selects and reads the flags
-// that follow it: a server url reads its keys the way its -strategy
-// flag names (sync, dump or aof, the scan strategies with +keyspace
-// follow the keyspace event notifications of the server), its -cluster
-// flag reads
-// the keyspace of every primary shard of the cluster of the server,
-// the dialect of a server source is the one the scheme of the url
-// names, the rdb, aof and manifest strategies take their own
-// -dialect flag. The bare names read stdin, the extension of a path
-// selects the strategy of a file.
-func parseSrcCmd(arg string, args []string) (srcCmd, error) {
-	var s srcCmd
-	if u, err := url.Parse(arg); err == nil && transferSchemes[u.Scheme] {
-		fs := flag.NewFlagSet("rdbc transfer source", flag.ContinueOnError)
-		var (
-			strategy    string
-			clusterFlag bool
-		)
-		fs.StringVar(&strategy, "strategy", "sync", "how the keys of the server are read: sync (the RDB payload of the SYNC command), dump (the SCAN and the DUMP commands) or aof (the read command of the type of every key); +keyspace follows the keyspace event notifications of the server while the scan runs")
-		fs.BoolVar(&clusterFlag, "cluster", false, "read the keyspace of every primary shard of the cluster of the server")
-		if err := fs.Parse(args); err != nil {
-			return s, err
-		}
-		s.rest = fs.Args()
-		v := serverSrc{url: u, dialer: dialerSingle{}}
-		if clusterFlag {
-			v.dialer = dialerCluster{}
-		}
+// srcMaker opens the source the argument of the command line
+// selects.
+type srcMaker interface {
+	Kind() chain.Kind
+	Args() []string
+	Make(ctx context.Context) (chain.Src, io.Closer, error)
+}
 
-		switch strategy {
-		case "sync":
-			s.srcMaker, s.kinds = serverSyncSrc{v}, chain.KindRDB
-		case "dump":
-			s.srcMaker, s.kinds = serverDumpSrc{serverSrc: v}, chain.KindDump
-		case "dump+keyspace":
-			s.srcMaker, s.kinds = serverDumpSrc{serverSrc: v, keyspace: true}, chain.KindDump|chain.KindAOF
-		case "aof":
-			s.srcMaker, s.kinds = serverAOFSrc{serverSrc: v}, chain.KindAOF
-		case "aof+keyspace":
-			s.srcMaker, s.kinds = serverAOFSrc{serverSrc: v, keyspace: true}, chain.KindAOF
-		default:
-			return s, fmt.Errorf("rdbc transfer: invalid strategy %q of the source", strategy)
+type srcServerMaker interface {
+	Kind() chain.Kind
+	Make(c *clusters.Cluster) chain.Src
+}
+
+type srcFileMaker interface {
+	Kind() chain.Kind
+	Make(r io.Reader, d rdb.Dialect) chain.Src
+}
+
+// srcServer dials the cluster of a server url, the dialect is the one
+// the scheme of the url names.
+type srcServer struct {
+	dialer dialer
+	args   []string
+	m      srcServerMaker
+}
+
+func (s srcServer) Kind() chain.Kind { return s.m.Kind() }
+
+func (s srcServer) Args() []string { return s.args }
+
+func (s srcServer) Make(ctx context.Context) (chain.Src, io.Closer, error) {
+	c, err := s.dialer.Dial(ctx, 3)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.m.Make(c), c, nil
+}
+
+// srcSyncServer reads the RDB payload of the SYNC command of every
+// node of the cluster.
+type srcSyncServer struct{}
+
+func (s srcSyncServer) Kind() chain.Kind { return chain.KindRDB }
+
+func (s srcSyncServer) Make(c *clusters.Cluster) chain.Src {
+	return chain.NewSyncServerSrc(c)
+}
+
+// srcDumpServer scans the keyspace of every node of the cluster, one
+// key with the TYPE, PTTL and DUMP commands.
+type srcDumpServer struct{ keyspace bool }
+
+func (s srcDumpServer) Kind() chain.Kind {
+	if s.keyspace {
+		return chain.KindDump | chain.KindAOF
+	}
+	return chain.KindDump
+}
+
+func (s srcDumpServer) Make(c *clusters.Cluster) chain.Src {
+	if s.keyspace {
+		return chain.NewDumpServerSrc(c, chain.WithKeyspace())
+	}
+	return chain.NewDumpServerSrc(c)
+}
+
+// srcAOFServer reads every key of the keyspace with the read command
+// of its type.
+type srcAOFServer struct{ keyspace bool }
+
+func (s srcAOFServer) Kind() chain.Kind { return chain.KindAOF }
+
+func (s srcAOFServer) Make(c *clusters.Cluster) chain.Src {
+	if s.keyspace {
+		return chain.NewAOFServerSrc(c, chain.WithKeyspace())
+	}
+	return chain.NewAOFServerSrc(c)
+}
+
+// srcFile opens the file of a source, the bare names read stdin.
+type srcFile struct {
+	file    string
+	args    []string
+	dialect rdb.Dialect
+	m       srcFileMaker
+}
+
+func (s srcFile) Kind() chain.Kind { return s.m.Kind() }
+
+func (s srcFile) Args() []string { return s.args }
+
+func (s srcFile) Make(ctx context.Context) (chain.Src, io.Closer, error) {
+	if s.file == "-" {
+		return s.m.Make(os.Stdin, s.dialect), io.NopCloser(os.Stdin), nil
+	}
+	f, err := os.Open(s.file)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.m.Make(f, s.dialect), f, nil
+}
+
+// srcRDBFile decodes the records of an RDB file.
+type srcRDBFile struct{}
+
+func (s srcRDBFile) Kind() chain.Kind { return chain.KindRDB }
+
+func (s srcRDBFile) Make(r io.Reader, d rdb.Dialect) chain.Src {
+	return chain.NewRDBFileSrc(r, d)
+}
+
+// srcAOFFile decodes the commands of an AOF file.
+type srcAOFFile struct{}
+
+func (s srcAOFFile) Kind() chain.Kind { return chain.KindAOF }
+
+func (s srcAOFFile) Make(r io.Reader, d rdb.Dialect) chain.Src {
+	return chain.NewAOFFileSrc(r, d)
+}
+
+// srcManifestFile decodes the base snapshot and the incremental
+// commands of a manifest archive.
+type srcManifestFile struct{}
+
+func (s srcManifestFile) Kind() chain.Kind { return chain.KindRDB | chain.KindAOF }
+
+func (s srcManifestFile) Make(r io.Reader, d rdb.Dialect) chain.Src {
+	return chain.NewManifestSrc(r, d)
+}
+
+// parseSrcCmd parses the provided command and arguments. It returns
+// a source maker, a builder of some sort, that initializes the source
+// in a later step. It accepts rdb, aof, and manifest commands for
+// a file source and server+sync, server+dump, and server+aof for
+// server sources. Each command has their own args and flags.
+func parseSrcCmd(cmd string, args []string) (srcMaker, error) {
+	fs := flag.NewFlagSet("rdbc transfer source", flag.ContinueOnError)
+	switch cmd {
+	case "server+sync", "server+dump", "server+aof":
+		var (
+			clusterFlag bool
+			keyspace    bool
+		)
+		fs.BoolVar(&clusterFlag, "cluster", false, "read the keyspace of every primary shard of the cluster of the server")
+		switch cmd {
+		case "server+dump", "server+aof":
+			fs.BoolVar(&keyspace, "keyspace", false, "enable keyspace notifications during scan")
+		}
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		if len(fs.Args()) == 0 {
+			return nil, fmt.Errorf("rdbc transfer: missing source url")
+		}
+		u, err := url.Parse(fs.Arg(0))
+		if err != nil {
+			return nil, fmt.Errorf("rdbc transfer: invalid source url: %w", err)
+		}
+		s := srcServer{args: fs.Args()[1:], dialer: dialerSingle{u: u}}
+		if clusterFlag {
+			s.dialer = dialerCluster{u: u}
+		}
+		switch cmd {
+		case "server+sync":
+			s.m = srcSyncServer{}
+		case "server+dump":
+			s.m = srcDumpServer{keyspace: keyspace}
+		case "server+aof":
+			s.m = srcAOFServer{keyspace: keyspace}
 		}
 		return s, nil
-	}
-	fs := flag.NewFlagSet("rdbc transfer source", flag.ContinueOnError)
-	var own dialectFlag
-	switch {
-	case arg == "rdb", strings.HasSuffix(arg, ".rdb"):
-		s.kinds = chain.KindRDB
-		fs.TextVar(&own, "dialect", dialectFlag{}, "the dialect of the file (redis, valkey, keydb)")
-	case arg == "aof", strings.HasSuffix(arg, ".aof"):
-		s.kinds = chain.KindAOF
-		fs.TextVar(&own, "dialect", dialectFlag{}, "the dialect of the AOF file (redis, valkey, keydb)")
-	case arg == "manifest", strings.HasSuffix(arg, ".manifest.tar"),
-		strings.HasSuffix(arg, ".manifest.tar.gz"),
-		strings.HasSuffix(arg, ".manifest.tgz"):
-		s.kinds = chain.KindRDB | chain.KindAOF
-		fs.TextVar(&own, "dialect", dialectFlag{}, "the dialect of the base snapshot (redis, valkey, keydb)")
-	default:
-		return s, fmt.Errorf("rdbc transfer: invalid source %q", arg)
-	}
-	if err := fs.Parse(args); err != nil {
-		return s, err
-	}
-	f := fileSrc{dialect: own.dialect}
-	switch arg {
 	case "rdb", "aof", "manifest":
-		// The bare name reads stdin.
+		var own dialectFlag
+		fs.TextVar(&own, "dialect", dialectFlag{}, "the dialect of the file (redis, valkey, keydb)")
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		if len(fs.Args()) == 0 {
+			return nil, fmt.Errorf("rdbc transfer: missing source file")
+		}
+		s := srcFile{args: fs.Args()[1:], file: fs.Arg(0), dialect: own.dialect}
+		switch cmd {
+		case "rdb":
+			s.m = srcRDBFile{}
+		case "aof":
+			s.m = srcAOFFile{}
+		case "manifest":
+			s.m = srcManifestFile{}
+		}
+		return s, nil
 	default:
-		f.file = arg
+		return nil, fmt.Errorf("rdbc transfer: invalid source %q", cmd)
 	}
-	switch {
-	case arg == "rdb", strings.HasSuffix(arg, ".rdb"):
-		s.srcMaker = rdbFileSrc{f}
-	case arg == "aof", strings.HasSuffix(arg, ".aof"):
-		s.srcMaker = aofFileSrc{f}
-	default:
-		s.srcMaker = manifestFileSrc{f}
-	}
-	s.rest = fs.Args()
-	return s, nil
+
 }
 
 // dstMaker opens the destination the argument of the command line
 // selects.
 type dstMaker interface {
+	Kind() chain.Kind
+	Args() []string
 	Make(ctx context.Context) (chain.Dst, io.Closer, error)
 }
 
-// dstCmd is the destination of a transfer: the maker the argument of
-// the command line selects, the kinds of the chain the destination
-// takes and the flags that follow it. Make opens the destination and
-// returns it with the resource it opened, nil when the destination
-// writes stdout. The caller closes the resource when the transfer
-// ended.
-type dstCmd struct {
-	dstMaker
-	kinds chain.Kind
-	rest  []string // the arguments left unparsed
+type dstFileMaker interface {
+	Kind() chain.Kind
+	Make(w io.Writer) chain.Dst
 }
 
-// Kinds returns the kinds of the chain the destination takes.
-func (d dstCmd) Kinds() chain.Kind { return d.kinds }
-
-// Args returns the arguments the destination left unparsed.
-func (d dstCmd) Args() []string { return d.rest }
-
-// serverDst stores the keys of the stream on the nodes of the cluster
+// dstServer stores the keys of the stream on the nodes of the cluster
 // of the server.
-type serverDst struct {
-	url    *url.URL
+type dstServer struct {
 	dialer dialer
+	kind   chain.Kind
+	args   []string
 	batch  uint
 }
 
-func (d serverDst) Make(ctx context.Context) (chain.Dst, io.Closer, error) {
-	c, err := d.dialer.Dial(ctx, d.url, 3)
+func (d dstServer) Kind() chain.Kind { return d.kind }
+
+func (d dstServer) Args() []string { return d.args }
+
+func (d dstServer) Make(ctx context.Context) (chain.Dst, io.Closer, error) {
+	c, err := d.dialer.Dial(ctx, 3)
 	if err != nil {
 		return nil, nil, err
 	}
-	dst := chain.NewServerDst(ctx, c)
+	dst := chain.NewServerDst(ctx, c, d.kind)
 	dst.SetBatchN(int(d.batch))
 	return dst, c, nil
 }
 
-// fileDst creates the file of a destination, the bare names write
+// dstFile creates the file of a destination, the bare names write
 // stdout.
-type fileDst struct {
-	file string // empty writes stdout
+type dstFile struct {
+	file string
+	args []string
+	m    dstFileMaker
 }
 
-// create writes the file of the destination, os.Stdout when the name
-// is bare.
-func (d fileDst) create() (io.Writer, io.Closer, error) {
-	if d.file == "" {
-		return os.Stdout, nil, nil
+func (d dstFile) Kind() chain.Kind { return d.m.Kind() }
+
+func (d dstFile) Args() []string { return d.args }
+
+type multiCloser struct{ a, b io.Closer }
+
+func (m multiCloser) Close() error {
+	return errors.Join(m.a.Close(), m.b.Close())
+}
+
+func (d dstFile) Make(ctx context.Context) (chain.Dst, io.Closer, error) {
+	if d.file == "-" {
+		return d.m.Make(os.Stdout), io.NopCloser(os.Stdout), nil
 	}
 	f, err := os.Create(d.file)
 	if err != nil {
 		return nil, nil, err
 	}
-	return f, f, nil
-}
-
-// jsonFileDst writes the stream as json.
-type jsonFileDst struct{ fileDst }
-
-func (d jsonFileDst) Make(context.Context) (chain.Dst, io.Closer, error) {
-	out, closer, err := d.create()
-	if err != nil {
-		return nil, nil, err
+	ext := filepath.Ext(d.file)
+	if ext == ".gz" || ext == ".tgz" {
+		w := gzip.NewWriter(f)
+		return d.m.Make(w), multiCloser{w, f}, nil
 	}
-	return chain.NewJSONDst(out), closer, nil
+	return d.m.Make(f), f, nil
 }
 
-// rdbFileDst encodes the records of an RDB file, the dialect is the
+// dstJSONFile writes the stream as json.
+type dstJSONFile struct{}
+
+func (d dstJSONFile) Kind() chain.Kind { return chain.KindJSON }
+
+func (d dstJSONFile) Make(w io.Writer) chain.Dst {
+	return chain.NewJSONDst(w)
+}
+
+// dstRDBFile encodes the records of an RDB file, the dialect is the
 // one the head of the stream names.
-type rdbFileDst struct{ fileDst }
+type dstRDBFile struct{}
 
-func (d rdbFileDst) Make(context.Context) (chain.Dst, io.Closer, error) {
-	out, closer, err := d.create()
-	if err != nil {
-		return nil, nil, err
-	}
-	return chain.NewRDBDst(out), closer, nil
+func (d dstRDBFile) Kind() chain.Kind { return chain.KindRDB }
+
+func (d dstRDBFile) Make(w io.Writer) chain.Dst {
+	return chain.NewRDBDst(w)
 }
 
-// aofFileDst writes the commands of the stream.
-type aofFileDst struct{ fileDst }
+// dstAOFFile writes the commands of the stream.
+type dstAOFFile struct{}
 
-func (d aofFileDst) Make(context.Context) (chain.Dst, io.Closer, error) {
-	out, closer, err := d.create()
-	if err != nil {
-		return nil, nil, err
-	}
-	return chain.NewAOFDst(out), closer, nil
+func (d dstAOFFile) Kind() chain.Kind { return chain.KindAOF }
+
+func (d dstAOFFile) Make(w io.Writer) chain.Dst {
+	return chain.NewAOFDst(w)
 }
 
-// manifestFileDst writes the base snapshot and the incremental
+// dstManifestFile writes the base snapshot and the incremental
 // commands of the stream as a manifest archive.
-type manifestFileDst struct{ fileDst }
+type dstManifestFile struct{}
 
-func (d manifestFileDst) Make(context.Context) (chain.Dst, io.Closer, error) {
-	out, closer, err := d.create()
-	if err != nil {
-		return nil, nil, err
-	}
-	return chain.NewManifestDst(out), closer, nil
+func (d dstManifestFile) Kind() chain.Kind { return chain.KindRDB | chain.KindAOF }
+
+func (d dstManifestFile) Make(w io.Writer) chain.Dst {
+	return chain.NewManifestDst(w)
 }
 
-// parseDstCmd sets the maker the argument selects and reads the flags
-// that follow it: a server url stores the keys the way its -strategy
-// flag names (dump, aof or dump+aof), its -batch flag sets the size of
-// the batches, its -cluster flag stores every key on the primary shard
-// that serves its slot, the dialect of a server destination is the one
-// the scheme of the url names. The bare names write stdout, the
-// extension of a path selects the strategy of a file, a file
-// destination takes no flags of its own and leaves the flags that
-// follow it unparsed.
-func parseDstCmd(arg string, args []string) (dstCmd, error) {
-	var d dstCmd
-	if u, err := url.Parse(arg); err == nil && transferSchemes[u.Scheme] {
-		fs := flag.NewFlagSet("rdbc transfer destination", flag.ContinueOnError)
+// parseDstCmd parses the provided command and arguments. It returns
+// a source maker, a builder of some sort, that initializes the source
+// in a later step. It accepts rdb, aof, json, and manifest commands for
+// a file source and server+restore, server+aof, and server for server
+// sources. Each command has their own args and flags.
+func parseDstCmd(cmd string, args []string) (dstMaker, error) {
+	fs := flag.NewFlagSet("rdbc transfer destination", flag.ContinueOnError)
+	switch cmd {
+	case "server+restore", "server+aof", "server":
 		var (
-			strategy    string
 			batch       uint
 			clusterFlag bool
 		)
-		fs.StringVar(&strategy, "strategy", "dump", "how the keys are stored: dump (the RESTORE of the DUMP payloads), aof (the store commands of an AOF stream) or dump+aof (both)")
 		fs.UintVar(&batch, "batch", 500, "commands to send to a server before reading the replies")
 		fs.BoolVar(&clusterFlag, "cluster", false, "store every key on the primary shard of the cluster that serves its slot")
 		if err := fs.Parse(args); err != nil {
-			return d, err
+			return nil, err
 		}
-		switch strategy {
-		case "dump":
-			d.kinds = chain.KindDump
-		case "aof":
-			d.kinds = chain.KindAOF
-		case "dump+aof":
-			d.kinds = chain.KindDump | chain.KindAOF
-		default:
-			return d, fmt.Errorf("rdbc transfer: invalid strategy %q", strategy)
+		if len(fs.Args()) == 0 {
+			return nil, fmt.Errorf("rdbc transfer: missing destination url")
 		}
-		if batch == 0 {
-			batch = 500
+		u, err := url.Parse(fs.Arg(0))
+		if err != nil {
+			return nil, fmt.Errorf("rdbc transfer: invalid destination url: %w", err)
 		}
-		v := serverDst{url: u, batch: batch, dialer: dialerSingle{}}
+		d := dstServer{args: fs.Args()[1:], dialer: dialerSingle{u: u}}
 		if clusterFlag {
-			v.dialer = dialerCluster{}
+			d.dialer = dialerCluster{u: u}
 		}
-		d.dstMaker = v
-		d.rest = fs.Args()
+
+		d.batch = batch
+		if d.batch == 0 {
+			d.batch = 500
+		}
+
+		switch cmd {
+		case "server+restore":
+			d.kind = chain.KindDump
+		case "server+aof":
+			d.kind = chain.KindAOF
+		case "server":
+			d.kind = chain.KindDump | chain.KindAOF
+		}
 		return d, nil
-	}
-	f := fileDst{}
-	switch {
-	case arg == "json", strings.HasSuffix(arg, ".json"):
-		d.kinds = chain.KindJSON
-	case arg == "aof", strings.HasSuffix(arg, ".aof"):
-		d.kinds = chain.KindAOF
-	case arg == "rdb", strings.HasSuffix(arg, ".rdb"):
-		d.kinds = chain.KindRDB
-	case arg == "manifest", strings.HasSuffix(arg, ".manifest.tar"),
-		strings.HasSuffix(arg, ".manifest.tar.gz"),
-		strings.HasSuffix(arg, ".manifest.tgz"):
-		d.kinds = chain.KindRDB | chain.KindAOF
-	default:
-		return d, fmt.Errorf("rdbc transfer: invalid destination %q", arg)
-	}
-	switch arg {
+
 	case "json", "aof", "rdb", "manifest":
-		// The bare name writes stdout.
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		if len(fs.Args()) == 0 {
+			return nil, fmt.Errorf("rdbc transfer: missing destination file")
+		}
+		d := dstFile{file: fs.Arg(0), args: fs.Args()[1:]}
+		switch cmd {
+		case "json":
+			d.m = dstJSONFile{}
+		case "aof":
+			d.m = dstAOFFile{}
+		case "rdb":
+			d.m = dstRDBFile{}
+		case "manifest":
+			d.m = dstManifestFile{}
+		}
+		return d, nil
 	default:
-		f.file = arg
+		return nil, fmt.Errorf("rdbc transfer: invalid destination %q", cmd)
 	}
-	switch {
-	case arg == "json", strings.HasSuffix(arg, ".json"):
-		d.dstMaker = jsonFileDst{f}
-	case arg == "aof", strings.HasSuffix(arg, ".aof"):
-		d.dstMaker = aofFileDst{f}
-	case arg == "rdb", strings.HasSuffix(arg, ".rdb"):
-		d.dstMaker = rdbFileDst{f}
-	default:
-		d.dstMaker = manifestFileDst{f}
-	}
-	d.rest = args
-	return d, nil
 }
 
 const (
@@ -720,12 +714,12 @@ var converters = map[Converter]chain.Middleware{
 // destination takes every kind the source carries and the converter
 // of the kind the destination wants otherwise. The destination
 // rejects the kinds nobody takes when the head arrives.
-func converterFor(src srcCmd, dst dstCmd) Converter {
-	dkind := dst.Kinds()
+func converterFor(src srcMaker, dst dstMaker) Converter {
+	dkind := dst.Kind()
 	if dkind&chain.KindJSON > 0 {
 		return ConverterJSON
 	}
-	if (src.Kinds() &^ dkind) == 0 {
+	if (src.Kind() &^ dkind) == 0 {
 		return ConverterNone
 	}
 	switch {

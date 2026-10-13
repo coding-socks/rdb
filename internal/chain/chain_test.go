@@ -50,7 +50,7 @@ func Test_Run(t *testing.T) {
 		}
 		tt := dst.Received()[0]
 		head, ok := tt.(Head)
-		if !ok || head.Kinds != KindRDB {
+		if !ok || head.Kind != KindRDB {
 			t.Errorf("the first token = %v, want the RDB head", dst.Received()[0])
 		}
 		_, ver := head.Dialect.Header()

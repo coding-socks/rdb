@@ -59,7 +59,7 @@ func (k Kind) String() string {
 // and a stream that changes its kind names all of them, the sections
 // of a manifest archive among them.
 type Head struct {
-	Kinds   Kind
+	Kind    Kind
 	Dialect rdb.Dialect
 }
 

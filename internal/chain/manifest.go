@@ -12,75 +12,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 )
 
-// manifestWriter writes a gzipped tar with the multi part AOF layout
-// of a Redis data directory: the RDB file as the base snapshot, the
-// incremental AOF files that receive the commands of the transfer, and
-// the AOF manifest that references them:
-//
-//	appendonly.aof.1.base.rdb
-//	appendonly.aof.1.incr.aof
-//	appendonly.aof.manifest
-func manifestWriter(w io.Writer, base []byte, incrs [][]byte) (err error) {
-	entries := []struct {
-		name string
-		data []byte
-	}{
-		{"appendonly.aof.1.base.rdb", base},
-	}
-	var manifest strings.Builder
-	fmt.Fprintf(&manifest, "file %s seq 1 type b\n", entries[0].name)
-	for i, incr := range incrs {
-		name := fmt.Sprintf("appendonly.aof.%d.incr.aof", i+1)
-		fmt.Fprintf(&manifest, "file %s seq %d type i\n", name, i+1)
-		entries = append(entries, struct {
-			name string
-			data []byte
-		}{name, incr})
-	}
-	if len(incrs) == 0 {
-		// The dump carries no commands, the incremental file of the
-		// layout stays empty.
-		entries = append(entries, struct {
-			name string
-			data []byte
-		}{"appendonly.aof.1.incr.aof", nil})
-		fmt.Fprintf(&manifest, "file appendonly.aof.1.incr.aof seq 1 type i\n")
-	}
-	entries = append(entries, struct {
-		name string
-		data []byte
-	}{"appendonly.aof.manifest", []byte(manifest.String())})
-
-	gz := gzip.NewWriter(w)
-	tw := tar.NewWriter(gz)
-	defer func() {
-		// The writers are closed on the error paths too, the
-		// underlying gzip stream stays consistent for the caller.
-		if cerr := tw.Close(); err == nil {
-			err = cerr
-		}
-		if cerr := gz.Close(); err == nil {
-			err = cerr
-		}
-	}()
-	now := time.Now()
-	for _, e := range entries {
-		if err := tw.WriteHeader(&tar.Header{
-			Name:    e.name,
-			Mode:    0o644,
-			Size:    int64(len(e.data)),
-			ModTime: now,
-		}); err != nil {
-			return err
-		}
-		if _, err := tw.Write(e.data); err != nil {
-			return err
-		}
-	}
-	return nil
+// manifestEntry is one file of a manifest archive.
+type manifestEntry struct {
+	name string
+	data []byte
 }
 
 // manifestRead splits a multi part AOF manifest archive into its base

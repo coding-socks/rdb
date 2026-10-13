@@ -20,72 +20,84 @@ func Test_parseSrcCmd(t *testing.T) {
 		name    string
 		arg     string
 		args    []string
-		want    srcCmd
+		want    srcMaker
 		wantErr bool
 	}{
 		{
-			name: "rdb", arg: "rdb", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindRDB, srcMaker: rdbFileSrc{}, rest: []string{"dst"}},
+			name: "rdb reads stdin", arg: "rdb", args: []string{"-", "nonflag"},
+			want: srcFile{m: srcRDBFile{}, file: "-", args: []string{"nonflag"}},
 		},
 		{
-			name: "aof", arg: "aof", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindAOF, srcMaker: aofFileSrc{}, rest: []string{"dst"}},
+			name: "aof reads stdin", arg: "aof", args: []string{"-", "nonflag"},
+			want: srcFile{m: srcAOFFile{}, file: "-", args: []string{"nonflag"}},
 		},
 		{
-			name: "manifest", arg: "manifest", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindRDB | chain.KindAOF, srcMaker: manifestFileSrc{}, rest: []string{"dst"}},
+			name: "manifest reads stdin", arg: "manifest", args: []string{"-", "nonflag"},
+			want: srcFile{m: srcManifestFile{}, file: "-", args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/in.rdb", arg: "/tmp/in.rdb", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindRDB, srcMaker: rdbFileSrc{fileSrc{file: "/tmp/in.rdb"}}, rest: []string{"dst"}},
+			name: "/tmp/in.rdb", arg: "rdb", args: []string{"/tmp/in.rdb", "nonflag"},
+			want: srcFile{m: srcRDBFile{}, file: "/tmp/in.rdb", args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/in.aof", arg: "/tmp/in.aof", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindAOF, srcMaker: aofFileSrc{fileSrc{file: "/tmp/in.aof"}}, rest: []string{"dst"}},
+			name: "/tmp/in.aof", arg: "aof", args: []string{"/tmp/in.aof", "nonflag"},
+			want: srcFile{m: srcAOFFile{}, file: "/tmp/in.aof", args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/in.manifest.tar", arg: "/tmp/in.manifest.tar", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindRDB | chain.KindAOF, srcMaker: manifestFileSrc{fileSrc{file: "/tmp/in.manifest.tar"}}, rest: []string{"dst"}},
+			name: "/tmp/in.manifest.tar", arg: "manifest", args: []string{"/tmp/in.manifest.tar", "nonflag"},
+			want: srcFile{m: srcManifestFile{}, file: "/tmp/in.manifest.tar", args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/in.manifest.tar.gz", arg: "/tmp/in.manifest.tar.gz", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindRDB | chain.KindAOF, srcMaker: manifestFileSrc{fileSrc{file: "/tmp/in.manifest.tar.gz"}}, rest: []string{"dst"}},
+			name: "/tmp/in.manifest.tar.gz", arg: "manifest", args: []string{"/tmp/in.manifest.tar.gz", "nonflag"},
+			want: srcFile{m: srcManifestFile{}, file: "/tmp/in.manifest.tar.gz", args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/in.manifest.tgz", arg: "/tmp/in.manifest.tgz", args: []string{"dst"},
-			want: srcCmd{kinds: chain.KindRDB | chain.KindAOF, srcMaker: manifestFileSrc{fileSrc{file: "/tmp/in.manifest.tgz"}}, rest: []string{"dst"}},
+			name: "/tmp/in.manifest.tgz", arg: "manifest", args: []string{"/tmp/in.manifest.tgz", "nonflag"},
+			want: srcFile{m: srcManifestFile{}, file: "/tmp/in.manifest.tgz", args: []string{"nonflag"}},
 		},
 		{
-			name: "the aof source names its dialect", arg: "/tmp/in.aof", args: []string{"-dialect", "valkey", "dst"},
-			want: srcCmd{kinds: chain.KindAOF, srcMaker: aofFileSrc{fileSrc{dialect: rdb.ValkeyDialect{}, file: "/tmp/in.aof"}}, rest: []string{"dst"}},
+			name: "the aof source names its dialect", arg: "aof", args: []string{"-dialect", "valkey", "/tmp/in.aof", "nonflag"},
+			want: srcFile{m: srcAOFFile{}, dialect: rdb.ValkeyDialect{}, file: "/tmp/in.aof", args: []string{"nonflag"}},
 		},
 		{
-			name: "a server source takes no dialect flag", arg: "redis://host:6379", args: []string{"-dialect", "valkey"},
+			name: "a missing source file", arg: "rdb",
 			wantErr: true,
 		},
 		{
-			name: "the sync strategy", arg: "redis://host:6379", args: []string{"-strategy", "sync", "dst"},
-			want: srcCmd{kinds: chain.KindRDB, srcMaker: serverSyncSrc{serverSrc{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerSingle{}}}, rest: []string{"dst"}},
+			name: "server+sync", arg: "server+sync", args: []string{"redis://host:6379", "nonflag"},
+			want: srcServer{m: srcSyncServer{}, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{"nonflag"}},
 		},
 		{
-			name: "the dump strategy", arg: "redis://host:6379", args: []string{"-strategy", "dump", "dst"},
-			want: srcCmd{kinds: chain.KindDump, srcMaker: serverDumpSrc{serverSrc: serverSrc{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerSingle{}}}, rest: []string{"dst"}},
+			name: "server+dump", arg: "server+dump", args: []string{"redis://host:6379", "nonflag"},
+			want: srcServer{m: srcDumpServer{}, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{"nonflag"}},
 		},
 		{
-			name: "the aof strategy", arg: "redis://host:6379", args: []string{"-strategy", "aof", "dst"},
-			want: srcCmd{kinds: chain.KindAOF, srcMaker: serverAOFSrc{serverSrc: serverSrc{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerSingle{}}}, rest: []string{"dst"}},
+			name: "server+dump takes the keyspace notifications", arg: "server+dump", args: []string{"-keyspace", "redis://host:6379"},
+			want: srcServer{m: srcDumpServer{keyspace: true}, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{}},
 		},
 		{
-			name: "an unknown strategy", arg: "redis://host:6379", args: []string{"-strategy", "bogus"},
+			name: "server+aof", arg: "server+aof", args: []string{"redis://host:6379", "nonflag"},
+			want: srcServer{m: srcAOFServer{}, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{"nonflag"}},
+		},
+		{
+			name: "server+aof takes the keyspace notifications", arg: "server+aof", args: []string{"-keyspace", "redis://host:6379"},
+			want: srcServer{m: srcAOFServer{keyspace: true}, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{}},
+		},
+		{
+			name: "an unknown strategy", arg: "unknown",
 			wantErr: true,
 		},
 		{
-			name: "a server source takes the dialect of the scheme", arg: "valkeys://host:6379", args: []string{"-strategy", "dump", "dst"},
-			want: srcCmd{kinds: chain.KindDump, srcMaker: serverDumpSrc{serverSrc: serverSrc{url: &url.URL{Scheme: "valkeys", Host: "host:6379"}, dialer: dialerSingle{}}}, rest: []string{"dst"}},
+			name: "a server source takes no dialect flag", arg: "server+sync", args: []string{"-dialect", "valkey", "redis://host:6379"},
+			wantErr: true,
 		},
 		{
-			name: "a server source takes the -cluster flag", arg: "redis://host:6379", args: []string{"-strategy", "dump", "-cluster", "dst"},
-			want: srcCmd{kinds: chain.KindDump, srcMaker: serverDumpSrc{serverSrc: serverSrc{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerCluster{}}}, rest: []string{"dst"}},
+			name: "a server source takes the dialect of the scheme", arg: "server+dump", args: []string{"valkeys://host:6379", "nonflag"},
+			want: srcServer{m: srcDumpServer{}, dialer: dialerSingle{u: &url.URL{Scheme: "valkeys", Host: "host:6379"}}, args: []string{"nonflag"}},
+		},
+		{
+			name: "a server source takes the -cluster flag", arg: "server+dump", args: []string{"-cluster", "redis://host:6379", "nonflag"},
+			want: srcServer{m: srcDumpServer{}, dialer: dialerCluster{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{"nonflag"}},
 		},
 	}
 	for _, tt := range tests {
@@ -111,7 +123,7 @@ func Test_srcCmd_Make(t *testing.T) {
 		if err := os.WriteFile(path, nil, 0o644); err != nil {
 			t.Fatal(err)
 		}
-		src, err := parseSrcCmd(path, nil)
+		src, err := parseSrcCmd("rdb", []string{path})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,8 +143,8 @@ func Test_srcCmd_Make(t *testing.T) {
 		}
 	})
 
-	t.Run("a bare name reads stdin and closes nothing", func(t *testing.T) {
-		src, err := parseSrcCmd("aof", nil)
+	t.Run("a dash reads stdin and closes nothing", func(t *testing.T) {
+		src, err := parseSrcCmd("aof", []string{"-"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,8 +155,8 @@ func Test_srcCmd_Make(t *testing.T) {
 		if _, ok := s.(*chain.AOFFileSrc); !ok {
 			t.Errorf("Make() = %T, want an aof source", s)
 		}
-		if closer != nil {
-			t.Errorf("Make() closer = %v, want none", closer)
+		if err := closer.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
 		}
 	})
 }
@@ -154,7 +166,7 @@ func Test_parseDstCmd(t *testing.T) {
 		name    string
 		arg     string
 		args    []string
-		want    dstCmd
+		want    dstMaker
 		wantErr bool
 	}{
 		{
@@ -162,60 +174,68 @@ func Test_parseDstCmd(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "json", arg: "json", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindJSON, dstMaker: jsonFileDst{}, rest: []string{"-x"}},
+			name: "json writes stdout", arg: "json", args: []string{"-", "nonflag"},
+			want: dstFile{m: dstJSONFile{}, file: "-", args: []string{"nonflag"}},
 		},
 		{
-			name: "rdb", arg: "rdb", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindRDB, dstMaker: rdbFileDst{}, rest: []string{"-x"}},
+			name: "rdb writes stdout", arg: "rdb", args: []string{"-", "nonflag"},
+			want: dstFile{m: dstRDBFile{}, file: "-", args: []string{"nonflag"}},
 		},
 		{
-			name: "aof", arg: "aof", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindAOF, dstMaker: aofFileDst{}, rest: []string{"-x"}},
+			name: "aof writes stdout", arg: "aof", args: []string{"-", "nonflag"},
+			want: dstFile{m: dstAOFFile{}, file: "-", args: []string{"nonflag"}},
 		},
 		{
-			name: "manifest", arg: "manifest", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindRDB | chain.KindAOF, dstMaker: manifestFileDst{}, rest: []string{"-x"}},
+			name: "manifest writes stdout", arg: "manifest", args: []string{"-", "nonflag"},
+			want: dstFile{m: dstManifestFile{}, file: "-", args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/out.json", arg: "/tmp/out.json", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindJSON, dstMaker: jsonFileDst{fileDst{file: "/tmp/out.json"}}, rest: []string{"-x"}},
+			name: "/tmp/out.json", arg: "json", args: []string{"/tmp/out.json", "nonflag"},
+			want: dstFile{file: "/tmp/out.json", m: dstJSONFile{}, args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/out.rdb", arg: "/tmp/out.rdb", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindRDB, dstMaker: rdbFileDst{fileDst{file: "/tmp/out.rdb"}}, rest: []string{"-x"}},
+			name: "/tmp/out.rdb", arg: "rdb", args: []string{"/tmp/out.rdb", "nonflag"},
+			want: dstFile{file: "/tmp/out.rdb", m: dstRDBFile{}, args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/out.aof", arg: "/tmp/out.aof", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindAOF, dstMaker: aofFileDst{fileDst{file: "/tmp/out.aof"}}, rest: []string{"-x"}},
+			name: "/tmp/out.aof", arg: "aof", args: []string{"/tmp/out.aof", "nonflag"},
+			want: dstFile{file: "/tmp/out.aof", m: dstAOFFile{}, args: []string{"nonflag"}},
 		},
 		{
-			name: "/tmp/out.manifest.tgz", arg: "/tmp/out.manifest.tgz", args: []string{"-x"},
-			want: dstCmd{kinds: chain.KindRDB | chain.KindAOF, dstMaker: manifestFileDst{fileDst{file: "/tmp/out.manifest.tgz"}}, rest: []string{"-x"}},
+			name: "/tmp/out.manifest.tgz", arg: "manifest", args: []string{"/tmp/out.manifest.tgz", "nonflag"},
+			want: dstFile{file: "/tmp/out.manifest.tgz", m: dstManifestFile{}, args: []string{"nonflag"}},
 		},
 		{
-			name: "a server destination takes the batch size ", arg: "keydb://host:6379", args: []string{"-batch", "20"},
-			want: dstCmd{kinds: chain.KindDump, dstMaker: serverDst{url: &url.URL{Scheme: "keydb", Host: "host:6379"}, dialer: dialerSingle{}, batch: 20}, rest: []string{}},
-		},
-		{
-			name: "unknown strategy", arg: "redis://host:6379", args: []string{"-strategy", "bogus"},
+			name: "a missing destination file", arg: "json",
 			wantErr: true,
 		},
 		{
-			name: "the dump strategy", arg: "redis://host:6379", args: []string{"-strategy", "dump"},
-			want: dstCmd{kinds: chain.KindDump, dstMaker: serverDst{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerSingle{}, batch: 500}, rest: []string{}},
+			name: "a server destination takes the batch size ", arg: "server+restore", args: []string{"-batch", "20", "keydb://host:6379"},
+			want: dstServer{kind: chain.KindDump, dialer: dialerSingle{u: &url.URL{Scheme: "keydb", Host: "host:6379"}}, batch: 20, args: []string{}},
 		},
 		{
-			name: "the aof strategy", arg: "redis://host:6379", args: []string{"-strategy", "aof"},
-			want: dstCmd{kinds: chain.KindAOF, dstMaker: serverDst{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerSingle{}, batch: 500}, rest: []string{}},
+			name: "a missing destination url", arg: "server+restore",
+			wantErr: true,
 		},
 		{
-			name: "the dump+aof strategy", arg: "redis://host:6379", args: []string{"-strategy", "dump+aof"},
-			want: dstCmd{kinds: chain.KindDump | chain.KindAOF, dstMaker: serverDst{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerSingle{}, batch: 500}, rest: []string{}},
+			name: "an invalid destination url", arg: "server+restore", args: []string{"::"},
+			wantErr: true,
 		},
 		{
-			name: "a server destination takes the -cluster flag", arg: "redis://host:6379", args: []string{"-cluster", "-batch", "20"},
-			want: dstCmd{kinds: chain.KindDump, dstMaker: serverDst{url: &url.URL{Scheme: "redis", Host: "host:6379"}, dialer: dialerCluster{}, batch: 20}, rest: []string{}},
+			name: "server+restore", arg: "server+restore", args: []string{"redis://host:6379"},
+			want: dstServer{kind: chain.KindDump, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 500, args: []string{}},
+		},
+		{
+			name: "server+aof", arg: "server+aof", args: []string{"redis://host:6379"},
+			want: dstServer{kind: chain.KindAOF, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 500, args: []string{}},
+		},
+		{
+			name: "server", arg: "server", args: []string{"redis://host:6379"},
+			want: dstServer{kind: chain.KindDump | chain.KindAOF, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 500, args: []string{}},
+		},
+		{
+			name: "a server destination takes the -cluster flag", arg: "server+restore", args: []string{"-cluster", "-batch", "20", "redis://host:6379"},
+			want: dstServer{kind: chain.KindDump, dialer: dialerCluster{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 20, args: []string{}},
 		},
 	}
 	for _, tt := range tests {
@@ -238,7 +258,7 @@ func Test_parseDstCmd(t *testing.T) {
 func Test_dstCmd_Make(t *testing.T) {
 	t.Run("a file destination is created and returned with its file", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "out.rdb")
-		dst, err := parseDstCmd(path, nil)
+		dst, err := parseDstCmd("rdb", []string{path})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -258,8 +278,8 @@ func Test_dstCmd_Make(t *testing.T) {
 		}
 	})
 
-	t.Run("a bare name writes stdout and closes nothing", func(t *testing.T) {
-		dst, err := parseDstCmd("json", nil)
+	t.Run("a dash writes stdout and closes nothing", func(t *testing.T) {
+		dst, err := parseDstCmd("json", []string{"-"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,8 +290,8 @@ func Test_dstCmd_Make(t *testing.T) {
 		if _, ok := d.(*chain.JSONDst); !ok {
 			t.Errorf("Make() = %T, want a json destination", d)
 		}
-		if closer != nil {
-			t.Errorf("Make() closer = %v, want none", closer)
+		if err := closer.Close(); err != nil {
+			t.Errorf("Close() error = %v", err)
 		}
 	})
 }
@@ -279,155 +299,153 @@ func Test_dstCmd_Make(t *testing.T) {
 func Test_converterFor(t *testing.T) {
 	tests := []struct {
 		name string
-		src  srcCmd
-		dst  dstCmd
+		src  srcMaker
+		dst  dstMaker
 		want Converter
 	}{
 		// The payloads of the SYNC command and of an RDB file.
 		{
 			name: "sync to rdb",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindRDB},
+			src:  srcServer{m: srcSyncServer{}}, dst: dstFile{m: dstRDBFile{}},
 		},
 		{
 			name: "sync to manifest",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindRDB | chain.KindAOF},
+			src:  srcServer{m: srcSyncServer{}}, dst: dstFile{m: dstManifestFile{}},
 		},
 		{
 			name: "sync to json",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindJSON},
+			src:  srcServer{m: srcSyncServer{}}, dst: dstFile{m: dstJSONFile{}},
 			want: ConverterJSON,
 		},
 		{
 			name: "sync to aof",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindAOF},
+			src:  srcServer{m: srcSyncServer{}}, dst: dstFile{m: dstAOFFile{}},
 			want: ConverterAOF,
 		},
 		{
 			name: "sync to a dump server",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindDump},
+			src:  srcServer{m: srcSyncServer{}}, dst: dstServer{kind: chain.KindDump},
 			want: ConverterDump,
 		},
 		{
 			name: "sync to an aof server",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindAOF},
+			src:  srcServer{m: srcSyncServer{}}, dst: dstFile{m: dstAOFFile{}},
 			want: ConverterAOF,
 		},
-		// The dump conversion keeps the values that have no command
-		// representation in the payloads of their keys.
 		{
 			name: "sync to a dump+aof server",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindDump | chain.KindAOF},
+			src:  srcServer{m: srcSyncServer{}}, dst: dstServer{kind: chain.KindDump | chain.KindAOF},
 			want: ConverterDump,
 		},
+		// RDB
 		{
 			name: "rdb to rdb",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindRDB},
+			src:  srcFile{m: srcRDBFile{}}, dst: dstFile{m: dstRDBFile{}},
 		},
 		{
 			name: "rdb to json",
-			src:  srcCmd{kinds: chain.KindRDB}, dst: dstCmd{kinds: chain.KindJSON},
+			src:  srcFile{m: srcRDBFile{}}, dst: dstFile{m: dstJSONFile{}},
 			want: ConverterJSON,
 		},
-		// The keys of a SCAN and a DUMP scan.
+		{
+			name: "rdb to dump",
+			src:  srcFile{m: srcRDBFile{}}, dst: dstServer{kind: chain.KindDump},
+			want: ConverterDump,
+		},
+		// SCAN and DUMP
 		{
 			name: "scan to rdb",
-			src:  srcCmd{kinds: chain.KindDump}, dst: dstCmd{kinds: chain.KindRDB},
+			src:  srcServer{m: srcDumpServer{}}, dst: dstFile{m: dstRDBFile{}},
 			want: ConverterRDB,
 		},
 		{
 			name: "scan to manifest",
-			src:  srcCmd{kinds: chain.KindDump}, dst: dstCmd{kinds: chain.KindRDB | chain.KindAOF},
+			src:  srcServer{m: srcDumpServer{}}, dst: dstFile{m: dstManifestFile{}},
 			want: ConverterRDB,
 		},
 		{
 			name: "scan to json",
-			src:  srcCmd{kinds: chain.KindDump}, dst: dstCmd{kinds: chain.KindJSON},
+			src:  srcServer{m: srcDumpServer{}}, dst: dstFile{m: dstJSONFile{}},
 			want: ConverterJSON,
 		},
 		{
 			name: "scan to aof",
-			src:  srcCmd{kinds: chain.KindDump}, dst: dstCmd{kinds: chain.KindAOF},
+			src:  srcServer{m: srcDumpServer{}}, dst: dstFile{m: dstAOFFile{}},
 			want: ConverterAOF,
 		},
 		{
 			name: "scan to a dump server",
-			src:  srcCmd{kinds: chain.KindDump}, dst: dstCmd{kinds: chain.KindDump},
+			src:  srcServer{m: srcDumpServer{}}, dst: dstServer{kind: chain.KindDump},
 		},
 		{
 			name: "scan to an aof server",
-			src:  srcCmd{kinds: chain.KindDump}, dst: dstCmd{kinds: chain.KindAOF},
+			src:  srcServer{m: srcDumpServer{}}, dst: dstServer{kind: chain.KindAOF},
 			want: ConverterAOF,
 		},
 		{
 			name: "scan to a dump+aof server",
-			src:  srcCmd{kinds: chain.KindDump}, dst: dstCmd{kinds: chain.KindDump | chain.KindAOF},
+			src:  srcServer{m: srcDumpServer{}}, dst: dstServer{kind: chain.KindDump | chain.KindAOF},
 		},
-		// The store commands of a scan+get and of an AOF file.
+		// AOF
 		{
 			name: "aof to an aof file",
-			src:  srcCmd{kinds: chain.KindAOF}, dst: dstCmd{kinds: chain.KindAOF},
+			src:  srcFile{m: srcAOFFile{}}, dst: dstFile{m: dstAOFFile{}},
 		},
 		{
 			name: "aof to an aof server",
-			src:  srcCmd{kinds: chain.KindAOF}, dst: dstCmd{kinds: chain.KindAOF},
+			src:  srcFile{m: srcAOFFile{}}, dst: dstServer{kind: chain.KindAOF},
 		},
 		{
 			name: "aof to a dump+aof server",
-			src:  srcCmd{kinds: chain.KindAOF}, dst: dstCmd{kinds: chain.KindDump | chain.KindAOF},
+			src:  srcFile{m: srcAOFFile{}}, dst: dstServer{kind: chain.KindDump | chain.KindAOF},
 		},
-		// The converter of the kind the destination wants rejects the
-		// commands it cannot take when the head arrives.
 		{
 			name: "aof to a dump server",
-			src:  srcCmd{kinds: chain.KindAOF}, dst: dstCmd{kinds: chain.KindDump},
+			src:  srcFile{m: srcAOFFile{}}, dst: dstServer{kind: chain.KindDump},
 			want: ConverterDump,
 		},
 		{
 			name: "aof to rdb",
-			src:  srcCmd{kinds: chain.KindAOF}, dst: dstCmd{kinds: chain.KindRDB},
+			src:  srcFile{m: srcAOFFile{}}, dst: dstFile{m: dstRDBFile{}},
 			want: ConverterRDB,
 		},
-		// The manifest destination decides at Finish on the base
-		// snapshot the commands do not carry.
 		{
 			name: "aof to manifest",
-			src:  srcCmd{kinds: chain.KindAOF}, dst: dstCmd{kinds: chain.KindRDB | chain.KindAOF},
+			src:  srcFile{m: srcAOFFile{}}, dst: dstFile{m: dstManifestFile{}},
 		},
 		{
 			name: "aof to json",
-			src:  srcCmd{kinds: chain.KindAOF}, dst: dstCmd{kinds: chain.KindJSON},
+			src:  srcFile{m: srcAOFFile{}}, dst: dstFile{m: dstJSONFile{}},
 			want: ConverterJSON,
 		},
-		// The base snapshot and the incremental commands of a
-		// manifest, the dump conversion keeps the values that have no
-		// command representation and passes the commands.
+		// Manifest
 		{
 			name: "manifest to manifest",
-			src:  srcCmd{kinds: chain.KindRDB | chain.KindAOF}, dst: dstCmd{kinds: chain.KindRDB | chain.KindAOF},
+			src:  srcFile{m: srcManifestFile{}}, dst: dstFile{m: dstManifestFile{}},
 		},
 		{
 			name: "manifest to a dump server",
-			src:  srcCmd{kinds: chain.KindRDB | chain.KindAOF}, dst: dstCmd{kinds: chain.KindDump},
+			src:  srcFile{m: srcManifestFile{}}, dst: dstServer{kind: chain.KindDump},
 			want: ConverterDump,
 		},
 		{
 			name: "manifest to an aof server",
-			src:  srcCmd{kinds: chain.KindRDB | chain.KindAOF}, dst: dstCmd{kinds: chain.KindAOF},
+			src:  srcFile{m: srcManifestFile{}}, dst: dstFile{m: dstAOFFile{}},
 			want: ConverterAOF,
 		},
 		{
 			name: "manifest to a dump+aof server",
-			src:  srcCmd{kinds: chain.KindRDB | chain.KindAOF}, dst: dstCmd{kinds: chain.KindDump | chain.KindAOF},
+			src:  srcFile{m: srcManifestFile{}}, dst: dstServer{kind: chain.KindDump | chain.KindAOF},
 			want: ConverterDump,
 		},
 		{
 			name: "manifest to rdb",
-			src:  srcCmd{kinds: chain.KindRDB | chain.KindAOF}, dst: dstCmd{kinds: chain.KindRDB},
+			src:  srcFile{m: srcManifestFile{}}, dst: dstFile{m: dstRDBFile{}},
 			want: ConverterRDB,
 		},
 		{
 			name: "manifest to json",
-			src:  srcCmd{kinds: chain.KindRDB | chain.KindAOF}, dst: dstCmd{kinds: chain.KindJSON},
+			src:  srcFile{m: srcManifestFile{}}, dst: dstFile{m: dstJSONFile{}},
 			want: ConverterJSON,
 		},
 	}

@@ -21,7 +21,7 @@ func Test_ToRDB(t *testing.T) {
 	}
 	rec := NewRecorderDst()
 	e := ToRDB()(rec)
-	if err := e.Process(Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
+	if err := e.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := e.Process(tok); err != nil {
@@ -38,7 +38,7 @@ func Test_ToRDB(t *testing.T) {
 		t.Fatalf("the conversion produced %d tokens, want the head, three and the tail", len(toks))
 	}
 	h, ok := toks[0].(Head)
-	if !ok || h.Kinds != KindRDB {
+	if !ok || h.Kind != KindRDB {
 		t.Fatalf("the head = %v, want the RDB head", toks[0])
 	}
 	if _, ok := h.Dialect.(rdb.RedisDialect); !ok {
@@ -59,7 +59,7 @@ func Test_ToRDB(t *testing.T) {
 		}
 		rec := NewRecorderDst()
 		e := ToRDB()(rec)
-		if err := e.Process(Head{Kinds: KindDump, Dialect: rdb.ValkeyDialect{}}); err != nil {
+		if err := e.Process(Head{Kind: KindDump, Dialect: rdb.ValkeyDialect{}}); err != nil {
 			t.Fatal(err)
 		}
 		if err := e.Process(tok); err != nil {
@@ -92,7 +92,7 @@ func Test_ToRDB(t *testing.T) {
 		}
 		tok.Payload[len(tok.Payload)-1] ^= 0xff
 		e := ToRDB()(NewRecorderDst())
-		if err := e.Process(Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
+		if err := e.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
 			t.Fatal(err)
 		}
 		if err := e.Process(tok); err == nil {
@@ -112,7 +112,7 @@ func Test_ToDump(t *testing.T) {
 	}
 	rec := NewRecorderDst()
 	e := ToDump()(rec)
-	if err := e.Process(Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}}); err != nil {
+	if err := e.Process(Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, tok := range []rdb.Token{
@@ -136,7 +136,7 @@ func Test_ToDump(t *testing.T) {
 		t.Fatalf("the conversion produced %d tokens, want the head and the key of a scan", len(toks))
 	}
 	h, ok := toks[0].(Head)
-	if !ok || h.Kinds != KindDump {
+	if !ok || h.Kind != KindDump {
 		t.Fatalf("the head = %v, want the dump head", toks[0])
 	}
 	if _, ok := h.Dialect.(rdb.RedisDialect); !ok {
@@ -163,7 +163,7 @@ func Test_ToDump(t *testing.T) {
 		}
 		rec := NewRecorderDst()
 		e := ToDump()(rec)
-		if err := e.Process(Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}}); err != nil {
+		if err := e.Process(Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}}); err != nil {
 			t.Fatal(err)
 		}
 		for _, tok := range []rdb.Token{
@@ -196,7 +196,7 @@ func Test_ToDump(t *testing.T) {
 	t.Run("an expired key is dropped", func(t *testing.T) {
 		rec := NewRecorderDst()
 		e := ToDump()(rec)
-		if err := e.Process(Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}}); err != nil {
+		if err := e.Process(Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}}); err != nil {
 			t.Fatal(err)
 		}
 		for _, tok := range []rdb.Token{
@@ -231,14 +231,14 @@ func Test_ToAOF(t *testing.T) {
 	}{
 		{
 			name:        "the head of an rdb stream becomes an aof head",
-			in:          []Token{Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}}},
+			in:          []Token{Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}}},
 			finish:      true,
 			wantDialect: rdb.RedisDialect{},
 		},
 		{
 			name: "the records of an rdb stream become the commands that re-create them",
 			in: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeString),
 				rdb.Str("foo"),
 				rdb.Str("bar"),
@@ -250,7 +250,7 @@ func Test_ToAOF(t *testing.T) {
 		{
 			name: "the keys of a scan become the commands that re-create them",
 			in: []Token{
-				Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindDump, Dialect: rdb.RedisDialect{}},
 				dump.Token{Key: []byte("foo"), Payload: dumped.Payload, TTL: -1},
 			},
 			finish:      true,
@@ -259,7 +259,7 @@ func Test_ToAOF(t *testing.T) {
 		},
 		{
 			name:        "mixed kind",
-			in:          []Token{Head{Kinds: KindRDB | KindAOF, Dialect: rdb.RedisDialect{}}},
+			in:          []Token{Head{Kind: KindRDB | KindAOF, Dialect: rdb.RedisDialect{}}},
 			finish:      true,
 			wantDialect: rdb.RedisDialect{},
 		},
@@ -298,7 +298,7 @@ func Test_ToAOF(t *testing.T) {
 			// The converted head keeps the dialect of the head it
 			// received.
 			head, ok := toks[0].(Head)
-			if !ok || head.Kinds != KindAOF || head.Dialect != tt.wantDialect {
+			if !ok || head.Kind != KindAOF || head.Dialect != tt.wantDialect {
 				t.Fatalf("the head = %v, want the AOF head of the %v dialect", toks[0], tt.wantDialect)
 			}
 			for i, want := range tt.want {
@@ -334,18 +334,18 @@ func Test_ToJSON(t *testing.T) {
 	}{
 		{
 			name:   "the head of an rdb stream becomes a json head",
-			in:     []Token{Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}}},
+			in:     []Token{Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}}},
 			finish: true,
 		},
 		{
 			name:   "the head of a scan becomes a json head",
-			in:     []Token{Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}}},
+			in:     []Token{Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}},
 			finish: true,
 		},
 		{
 			name: "the records of an rdb stream become the values of the json stream",
 			in: []Token{
-				Head{Kinds: KindRDB, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindRDB, Dialect: rdb.RedisDialect{}},
 				rdb.Op(rdb.RedisOpCodeString),
 				rdb.Str("foo"),
 				rdb.Str("bar"),
@@ -356,7 +356,7 @@ func Test_ToJSON(t *testing.T) {
 		{
 			name: "the keys of a scan become the values of the json stream",
 			in: []Token{
-				Head{Kinds: KindDump, Dialect: rdb.RedisDialect{}},
+				Head{Kind: KindDump, Dialect: rdb.RedisDialect{}},
 				dump.Token{Key: []byte("foo"), Payload: dumped.Payload, TTL: -1},
 			},
 			finish: true,
@@ -398,7 +398,7 @@ func Test_ToJSON(t *testing.T) {
 			enc := jsontext.NewEncoder(&buf)
 			for i, tok := range rec.Received() {
 				if head, ok := tok.(Head); ok {
-					if i != 0 || head.Kinds != KindJSON || head.Dialect != (rdb.RedisDialect{}) {
+					if i != 0 || head.Kind != KindJSON || head.Dialect != (rdb.RedisDialect{}) {
 						t.Errorf("the head = %v, want the JSON head of the redis dialect", tok)
 					}
 					continue
