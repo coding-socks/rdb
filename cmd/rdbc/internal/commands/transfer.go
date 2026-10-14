@@ -352,7 +352,7 @@ func (s srcSyncServer) Make(c *clusters.Cluster) chain.Src {
 }
 
 // srcDumpServer scans the keyspace of every node of the cluster, one
-// key with the TYPE, PTTL and DUMP commands.
+// key with the PTTL and DUMP commands.
 type srcDumpServer struct{ keyspace bool }
 
 func (s srcDumpServer) Kind() chain.Kind {

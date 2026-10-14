@@ -205,12 +205,6 @@ func TestDumpSrc_Run(t *testing.T) {
 				w.Proto().WriteToken(resp.ArrayLen(1))
 				w.Proto().WriteToken(resp.Bytes([]byte(key)))
 			})
-			mux.HandleFunc("TYPE", func(w resp.ResponseWriter, cmd *resp.Command) {
-				if args := argsOf(cmd); !slices.Equal(args, []string{"TYPE", key}) {
-					t.Errorf("the server served %v, want [TYPE %s]", args, key)
-				}
-				w.Proto().WriteToken(resp.String("string"))
-			})
 			mux.HandleFunc("DUMP", func(w resp.ResponseWriter, cmd *resp.Command) {
 				if args := argsOf(cmd); !slices.Equal(args, []string{"DUMP", key}) {
 					t.Errorf("the server served %v, want [DUMP %s]", args, key)

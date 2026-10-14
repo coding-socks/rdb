@@ -320,9 +320,8 @@ func (s *ManifestSrc) Progress() []ProgressReport {
 
 // DumpServerSrc scans the keyspace of every node of a cluster, one node
 // after the other. The scan of a node walks the keyspace of the
-// database its connection serves. The keys of the types without an
-// RDB representation in the dump package, the module types among
-// them, are skipped.
+// database its connection serves. Every key carries its payload, the
+// type of its value makes no difference.
 type DumpServerSrc struct {
 	cluster *clusters.Cluster
 
@@ -401,10 +400,9 @@ func (s *DumpServerSrc) Progress() []ProgressReport {
 }
 
 // DumpServerScanner reads the payloads of the keyspace a [Bulk] scans.
-// The keys of the types without an RDB representation in the dump
-// package are skipped, a key that is gone or expired between the SCAN
-// and its read stores nothing, and a payload that cannot carry a
-// record of a value stores nothing.
+// A key that is gone or expired between the SCAN and its read stores
+// nothing, and a payload that cannot carry a record of a value stores
+// nothing.
 type DumpServerScanner struct {
 	bulk *Bulk
 	emit func(t Token) error
@@ -421,13 +419,7 @@ func (s *DumpServerScanner) Scan(ctx context.Context) error {
 		if s.i != nil {
 			s.i.Add(1)
 		}
-		s.bulk.Send([][]byte{[]byte("TYPE"), key}, func(t resp.Token, _ resp.Decoder) error {
-			if t.Kind() == resp.KindError {
-				return t.Err()
-			}
-			s.read(key, t.String())
-			return nil
-		})
+		s.read(key)
 	})
 }
 
@@ -436,23 +428,12 @@ func (s *DumpServerScanner) notified(event, key []byte) error {
 	case "del", "expired", "evicted", "rename_from", "move_from":
 		return s.emit(aof.Token{[]byte("DEL"), key})
 	default:
-		s.bulk.Send([][]byte{[]byte("TYPE"), key}, func(t resp.Token, _ resp.Decoder) error {
-			if t.Kind() == resp.KindError {
-				return t.Err()
-			}
-			s.read(key, t.String())
-			return nil
-		})
+		s.read(key)
 		return nil
 	}
 }
 
-func (s *DumpServerScanner) read(key []byte, typ string) {
-	switch typ {
-	case "string", "list", "set", "zset", "hash", "stream":
-	default:
-		return
-	}
+func (s *DumpServerScanner) read(key []byte) {
 	var pttl int64
 	s.bulk.Send([][]byte{[]byte("PTTL"), key}, func(t resp.Token, _ resp.Decoder) error {
 		if t.Kind() == resp.KindError {
