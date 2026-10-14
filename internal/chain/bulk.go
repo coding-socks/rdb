@@ -70,7 +70,7 @@ func WithCursor(cursor uint64) BulkOption {
 // is fetched.
 func WithQueueThreshold(queueThreshold int) BulkOption {
 	return func(b *Bulk) {
-		b.queueThreshold = min(0, queueThreshold)
+		b.queueThreshold = max(0, queueThreshold)
 	}
 }
 
