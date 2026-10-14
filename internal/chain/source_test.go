@@ -135,6 +135,11 @@ func TestSyncSrc_Run(t *testing.T) {
 				reply:   "$-1\r\n",
 				wantErr: true,
 			},
+			{
+				name:    "a null bulk string carries no payload",
+				reply:   "$?\r\n",
+				wantErr: true,
+			},
 		}
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {

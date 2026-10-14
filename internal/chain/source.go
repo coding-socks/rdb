@@ -1416,6 +1416,9 @@ func (s *SyncServerSrc) payload(ctx context.Context, st *step, node clusters.Nod
 				r.Advance(resp.TermByte(b[5 : len(b)-2]))
 				return r, nil
 			}
+			if bytes.Equal(b, []byte("$?\r\n")) {
+				return nil, errors.New("rdbc transfer: invalid unbound length in SYNC")
+			}
 			l, err := strconv.ParseInt(string(b[1:len(b)-2]), 10, 64)
 			if err != nil {
 				return nil, err
