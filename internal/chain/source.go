@@ -1382,41 +1382,52 @@ func (s *SyncServerSrc) node(ctx context.Context, st *step, n clusters.Node, dst
 }
 
 // payload sends the SYNC command to the node, reads the handshake and
-// returns the reader of its RDB payload. A +FULLRESYNC reply is
-// written to stderr, an error reply fails the transfer. The payload
-// arrives as a bulk string of a known size, as a streamed bulk string
-// or as an EOF-marked bulk string whose marker terminates it. The
-// step carries the announced size of the payload, a payload that
-// announces none leaves it 0.
-func (s *SyncServerSrc) payload(ctx context.Context, st *step, n clusters.Node) (io.Reader, error) {
-	if err := n.Conn.WriteAndFlush([]byte("SYNC")); err != nil {
+// returns the reader of its RDB payload.
+func (s *SyncServerSrc) payload(ctx context.Context, st *step, node clusters.Node) (io.Reader, error) {
+	if err := node.Conn.WriteAndFlush([]byte("SYNC")); err != nil {
 		return nil, err
 	}
+	r := node.Conn.D.Handoff()
+	buf := bytes.NewBuffer(nil)
 	for {
-		t, err := n.Conn.ReadValue(ctx)
-		if err != nil {
+		buf.Reset()
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		switch t.Kind() {
+		if err := r.Advance(resp.TermByte("\n")); err != nil {
+			return nil, err
+		}
+		if _, err := buf.ReadFrom(r); err != nil {
+			return nil, err
+		}
+		if buf.Len() <= 1 {
+			continue // skip keepalive "\n"
+		}
+		b := buf.Bytes()
+		switch resp.Kind(b[0]) {
 		case resp.KindString:
-			// Redis replies with the FULLRESYNC handshake,
-			// KeyDB replies with the payload directly.
-			fmt.Fprintf(os.Stderr, "%s\n", t.String())
+			// likely a +FULLRESYNC reply
+			fmt.Fprintf(os.Stderr, "%s\n", b[1:len(b)-2])
 		case resp.KindError:
-			return nil, t.Err()
+			return nil, errors.New(string(b[1 : len(b)-2]))
 		case resp.KindBlobString:
-			if t.IsNil() {
-				return nil, errors.New("rdbc transfer: the SYNC transfer carries no payload")
+			if len(b) > 7 && bytes.Equal(b[:5], []byte("$EOF:")) {
+				// unknown size
+				r.Advance(resp.TermByte(b[5 : len(b)-2]))
+				return r, nil
 			}
-			// A bulk string of a known size streams from its reader, an
-			// EOF-marked bulk string ends at its marker. A payload that
-			// announces no size leaves the step indeterminate.
-			if n, ok := t.Term().(resp.TermLen); ok {
-				st.n.Store(uint64(n))
+			l, err := strconv.ParseInt(string(b[1:len(b)-2]), 10, 64)
+			if err != nil {
+				return nil, err
 			}
-			return t.Reader(), nil
+			if l < 0 {
+				return nil, fmt.Errorf("rdbc transfer: invalid length %d in SYNC", l)
+			}
+			st.n.Store(uint64(l))
+			r.Advance(resp.TermLen(int(l) + 2))
+			return r, nil
 		default:
-			return nil, fmt.Errorf("rdbc transfer: unexpected %s in the SYNC handshake", t.Kind())
+			return nil, fmt.Errorf("rdbc transfer: invalid kind %s in SYNC", string(b))
 		}
 	}
 }

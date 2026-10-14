@@ -116,6 +116,16 @@ func TestSyncSrc_Run(t *testing.T) {
 				wantN: uint64(len(payload1)),
 			},
 			{
+				name:  "the keepalive newline of the master precedes the payload",
+				reply: "\n$" + strconv.Itoa(len(payload1)) + "\r\n" + string(payload1) + "\r\n",
+				wantN: uint64(len(payload1)),
+			},
+			{
+				name:  "the keepalive newline precedes the handshake",
+				reply: "\n+FULLRESYNC 0123456789abcdef0123 0\r\n$" + strconv.Itoa(len(payload1)) + "\r\n" + string(payload1) + "\r\n",
+				wantN: uint64(len(payload1)),
+			},
+			{
 				name:    "an error reply fails the transfer",
 				reply:   "-ERR replication is not allowed\r\n",
 				wantErr: true,
