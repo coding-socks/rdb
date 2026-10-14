@@ -108,6 +108,7 @@ memory usage and number of elements.
 			chain.WithCount(int64(count)),
 			chain.WithMatch([]byte(match)),
 			chain.WithCursor(cursor),
+			chain.WithQueueThreshold(500),
 		),
 		samples: samples,
 

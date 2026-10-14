@@ -374,7 +374,7 @@ func (s *DumpServerSrc) Run(ctx context.Context, dst Dst) error {
 		}
 		s.steps[i].n.Store(uint64(tok.Int()))
 		scanner := DumpServerScanner{
-			bulk: NewBulk(n.Conn),
+			bulk: NewBulk(n.Conn, WithQueueThreshold(500)),
 			emit: func(t Token) error {
 				return dst.Process(t)
 			},
@@ -510,7 +510,7 @@ func (s *AOFServerSrc) Run(ctx context.Context, dst Dst) error {
 		}
 		s.steps[i].n.Store(uint64(tok.Int()))
 		scanner := AOFServerScanner{
-			bulk: NewBulk(n.Conn),
+			bulk: NewBulk(n.Conn, WithQueueThreshold(500)),
 			emit: func(t aof.Token) error {
 				return dst.Process(t)
 			},
