@@ -415,12 +415,7 @@ func (s *DumpServerScanner) Scan(ctx context.Context) error {
 	if s.keyspace {
 		s.bulk.KeyspaceNotifications(s.notified)
 	}
-	return s.bulk.Scan(ctx, func(key []byte) {
-		if s.i != nil {
-			s.i.Add(1)
-		}
-		s.read(key)
-	})
+	return s.bulk.Scan(ctx, s.read)
 }
 
 func (s *DumpServerScanner) notified(event, key []byte) error {
@@ -445,6 +440,9 @@ func (s *DumpServerScanner) read(key []byte) {
 	s.bulk.Send([][]byte{[]byte("DUMP"), key}, func(t resp.Token, _ resp.Decoder) error {
 		if t.Kind() == resp.KindError {
 			return t.Err()
+		}
+		if s.i != nil {
+			s.i.Add(1)
 		}
 		if t.IsNil() {
 			return nil
@@ -553,14 +551,17 @@ type AOFServerScanner struct {
 	keyspace        bool
 }
 
-func (s AOFServerScanner) Scan(ctx context.Context) error {
+func (s *AOFServerScanner) done() {
+	if s.i != nil {
+		s.i.Add(1)
+	}
+}
+
+func (s *AOFServerScanner) Scan(ctx context.Context) error {
 	if s.keyspace {
 		s.bulk.KeyspaceNotifications(s.notified)
 	}
 	return s.bulk.Scan(ctx, func(key []byte) {
-		if s.i != nil {
-			s.i.Add(1)
-		}
 		s.bulk.Send([][]byte{[]byte("TYPE"), key}, func(t resp.Token, _ resp.Decoder) error {
 			if t.Kind() == resp.KindError {
 				return t.Err()
@@ -609,10 +610,12 @@ func (s *AOFServerScanner) read(key []byte, typ string) {
 		s.readBloom(key, filterCuckoo, 0)
 	case "TSDB-TYPE":
 		s.readTimeSeries(key)
+	default:
+		s.done()
 	}
 }
 
-func (s AOFServerScanner) readString(key []byte, start int64) {
+func (s *AOFServerScanner) readString(key []byte, start int64) {
 	end := start + readStringMax - 1
 	s.bulk.Send([][]byte{
 		[]byte("GETRANGE"), key,
@@ -641,7 +644,7 @@ func (s AOFServerScanner) readString(key []byte, start int64) {
 	})
 }
 
-func (s AOFServerScanner) readList(key []byte, start int64) {
+func (s *AOFServerScanner) readList(key []byte, start int64) {
 	end := start + readBatchCount - 1
 	s.bulk.Send([][]byte{
 		[]byte("LRANGE"), key,
@@ -675,7 +678,7 @@ func (s AOFServerScanner) readList(key []byte, start int64) {
 	})
 }
 
-func (s AOFServerScanner) readSet(key []byte, cur []byte) {
+func (s *AOFServerScanner) readSet(key []byte, cur []byte) {
 	if bytes.Equal(cur, []byte("0")) {
 		s.expire(key)
 		return
@@ -725,7 +728,7 @@ func (s AOFServerScanner) readSet(key []byte, cur []byte) {
 	})
 }
 
-func (s AOFServerScanner) readZSet(key []byte, cur []byte) {
+func (s *AOFServerScanner) readZSet(key []byte, cur []byte) {
 	if bytes.Equal(cur, []byte("0")) {
 		s.expire(key)
 		return
@@ -784,7 +787,7 @@ func (s AOFServerScanner) readZSet(key []byte, cur []byte) {
 	})
 }
 
-func (s AOFServerScanner) readHash(key []byte, cur []byte) {
+func (s *AOFServerScanner) readHash(key []byte, cur []byte) {
 	if bytes.Equal(cur, []byte("0")) {
 		s.expire(key)
 		return
@@ -878,7 +881,7 @@ func (s AOFServerScanner) readHash(key []byte, cur []byte) {
 	})
 }
 
-func (s AOFServerScanner) readStream(key []byte, id []byte) {
+func (s *AOFServerScanner) readStream(key []byte, id []byte) {
 	start := []byte("-")
 	if id != nil {
 		start = append([]byte("("), id...)
@@ -937,7 +940,7 @@ func (s AOFServerScanner) readStream(key []byte, id []byte) {
 	})
 }
 
-func (s AOFServerScanner) readStreamGroups(key []byte) {
+func (s *AOFServerScanner) readStreamGroups(key []byte) {
 	s.bulk.Send([][]byte{[]byte("XINFO"), []byte("GROUPS"), key}, func(t resp.Token, d resp.Decoder) error {
 		if t.Kind() == resp.KindError {
 			return t.Err()
@@ -982,12 +985,13 @@ func (s AOFServerScanner) readStreamGroups(key []byte) {
 	})
 }
 
-func (s AOFServerScanner) readJSON(key []byte) {
+func (s *AOFServerScanner) readJSON(key []byte) {
 	s.bulk.Send([][]byte{[]byte("JSON.GET"), key}, func(t resp.Token, _ resp.Decoder) error {
 		if t.Kind() == resp.KindError {
 			return t.Err()
 		}
 		if t.IsNil() {
+			s.done()
 			return nil
 		}
 		if err := s.emit(aof.Token{[]byte("JSON.SET"), key, []byte("$"), t.Bytes()}); err != nil {
@@ -1013,12 +1017,13 @@ var loadCmds = map[int][]byte{
 	filterCuckoo: []byte("CF.LOADCHUNK"),
 }
 
-func (s AOFServerScanner) readBloom(key []byte, filterType int, iter int64) {
+func (s *AOFServerScanner) readBloom(key []byte, filterType int, iter int64) {
 	s.bulk.Send([][]byte{dumpCmds[filterType], key, strconv.AppendInt(nil, iter, 10)}, func(t resp.Token, d resp.Decoder) error {
 		if t.Kind() == resp.KindError {
 			return t.Err()
 		}
 		if t.IsNil() {
+			s.done()
 			return nil
 		}
 		parts, partsErr := t.Iter(d)
@@ -1057,12 +1062,13 @@ func (s AOFServerScanner) readBloom(key []byte, filterType int, iter int64) {
 	})
 }
 
-func (s AOFServerScanner) readTimeSeries(key []byte) {
+func (s *AOFServerScanner) readTimeSeries(key []byte) {
 	s.bulk.Send([][]byte{[]byte("TS.INFO"), key}, func(t resp.Token, d resp.Decoder) error {
 		if t.Kind() == resp.KindError {
 			return t.Err()
 		}
 		if t.IsNil() {
+			s.done()
 			return nil
 		}
 		pairs, pairsErr := t.Iter(d)
@@ -1217,7 +1223,7 @@ func (s AOFServerScanner) readTimeSeries(key []byte) {
 	})
 }
 
-func (s AOFServerScanner) readTimeSeriesSamples(key, from []byte, rules [][]byte) {
+func (s *AOFServerScanner) readTimeSeriesSamples(key, from []byte, rules [][]byte) {
 	start := []byte("-")
 	if from != nil {
 		start = from
@@ -1278,7 +1284,7 @@ func (s AOFServerScanner) readTimeSeriesSamples(key, from []byte, rules [][]byte
 	})
 }
 
-func (s AOFServerScanner) expire(key []byte) {
+func (s *AOFServerScanner) expire(key []byte) {
 	if s.usePTTL {
 		s.expirePTTL(key)
 	} else {
@@ -1286,12 +1292,13 @@ func (s AOFServerScanner) expire(key []byte) {
 	}
 }
 
-func (s AOFServerScanner) expirePTTL(key []byte) {
+func (s *AOFServerScanner) expirePTTL(key []byte) {
 	s.bulk.Send([][]byte{[]byte("PTTL"), key}, func(t resp.Token, _ resp.Decoder) error {
 		if t.Kind() == resp.KindError {
 			return t.Err()
 		}
 		pttl := t.Int()
+		s.done()
 		if pttl == -1 {
 			return nil
 		}
@@ -1300,12 +1307,13 @@ func (s AOFServerScanner) expirePTTL(key []byte) {
 	})
 }
 
-func (s AOFServerScanner) expireTime(key []byte) {
+func (s *AOFServerScanner) expireTime(key []byte) {
 	s.bulk.Send([][]byte{[]byte("PEXPIRETIME"), key}, func(t resp.Token, _ resp.Decoder) error {
 		if t.Kind() == resp.KindError {
 			return t.Err()
 		}
 		ptime := t.Int()
+		s.done()
 		if ptime == -1 {
 			return nil
 		}
