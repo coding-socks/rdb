@@ -1389,7 +1389,7 @@ func (s *SyncServerSrc) node(ctx context.Context, st *step, n clusters.Node, dst
 // step carries the announced size of the payload, a payload that
 // announces none leaves it 0.
 func (s *SyncServerSrc) payload(ctx context.Context, st *step, n clusters.Node) (io.Reader, error) {
-	if err := n.Conn.Write([]byte("SYNC")); err != nil {
+	if err := n.Conn.WriteAndFlush([]byte("SYNC")); err != nil {
 		return nil, err
 	}
 	for {

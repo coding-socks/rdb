@@ -262,10 +262,7 @@ func route(nodes []Node, key []byte) (int, error) {
 // context ends the read of the reply. The cluster of a server in
 // construction serves no slots yet, it fails the call.
 func topology(ctx context.Context, conn *resp.Client) ([]Node, error) {
-	if err := conn.Write([]byte("CLUSTER"), []byte("SHARDS")); err != nil {
-		return nil, err
-	}
-	reply, err := conn.ReadValue(ctx)
+	reply, err := conn.Exec(ctx, []byte("CLUSTER"), []byte("SHARDS"))
 	if err != nil {
 		return nil, err
 	}
@@ -283,10 +280,7 @@ func topology(ctx context.Context, conn *resp.Client) ([]Node, error) {
 	// do the older servers that take the SLOTS form, the second
 	// reply tells the two apart.
 	shardsErr := reply.Err()
-	if err := conn.Write([]byte("CLUSTER"), []byte("SLOTS")); err != nil {
-		return nil, err
-	}
-	reply, err = conn.ReadValue(ctx)
+	reply, err = conn.Exec(ctx, []byte("CLUSTER"), []byte("SLOTS"))
 	if err != nil {
 		return nil, err
 	}

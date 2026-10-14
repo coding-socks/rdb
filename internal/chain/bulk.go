@@ -81,7 +81,6 @@ func WithQueueThreshold(queueThreshold int) BulkOption {
 // alone.
 type Bulk struct {
 	c     *resp.Client
-	pipe  *resp.Pipe // the pipeline the commands of the run are written to
 	visit func(key []byte)
 	err   error // the first write error of the run
 
@@ -117,7 +116,7 @@ func (b *Bulk) Cursor() uint64 {
 // [Send]. A write error is stored, the run fails behind it.
 func (b *Bulk) Send(args [][]byte, reply Reply) {
 	if b.err == nil {
-		b.err = b.pipe.Write(args...)
+		b.err = b.c.Write(args...)
 	}
 	b.queue = append(b.queue, reply)
 }
@@ -147,7 +146,6 @@ func (b *Bulk) Scan(ctx context.Context, visit func(key []byte)) error {
 			return err
 		}
 	}
-	b.pipe = b.c.Pipe()
 	var spare []Reply // Used for recycling the queue slice.
 	for b.err == nil {
 		// The subscription ends when the walk is done, the replies
@@ -166,7 +164,7 @@ func (b *Bulk) Scan(ctx context.Context, visit func(key []byte)) error {
 		if !b.done && len(b.queue) <= b.queueThreshold {
 			b.scan()
 		}
-		if err := b.pipe.Flush(); err != nil {
+		if err := b.c.Flush(); err != nil {
 			return err
 		}
 		replies := b.queue
@@ -200,7 +198,7 @@ func (b *Bulk) Scan(ctx context.Context, visit func(key []byte)) error {
 // a push between the write and the reply reaches the callback of the
 // notifications.
 func (b *Bulk) command(ctx context.Context, args ...[]byte) (resp.Token, error) {
-	if err := b.c.Write(args...); err != nil {
+	if err := b.c.WriteAndFlush(args...); err != nil {
 		return resp.Token{}, err
 	}
 	for {
@@ -243,10 +241,7 @@ func (b *Bulk) subscribe(ctx context.Context) error {
 	if err := keyspaceClasses(cur); err != nil {
 		return err
 	}
-	if err := b.c.Write([]byte("PSUBSCRIBE"), []byte(keyeventChannel)); err != nil {
-		return err
-	}
-	t, err = b.c.ReadValue(ctx)
+	t, err = b.c.Exec(ctx, []byte("PSUBSCRIBE"), []byte(keyeventChannel))
 	if err != nil {
 		return err
 	}

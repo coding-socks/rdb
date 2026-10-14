@@ -25,6 +25,9 @@ func Test_RDBDst_Process(t *testing.T) {
 		if err := d.Process(rdb.Op(rdb.RedisOpCodeEndOfRDB)); err != nil {
 			t.Fatal(err)
 		}
+		if err := d.Finish(); err != nil {
+			t.Fatal(err)
+		}
 		b := buf.Bytes()
 		if !bytes.HasPrefix(b, []byte("VALKEY080")) {
 			t.Errorf("the file starts with %q, want VALKEY080", b[:min(len(b), 10)])

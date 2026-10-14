@@ -162,10 +162,7 @@ func (c *Client) Hello(ctx context.Context, p int, user *url.Userinfo) error {
 		}
 	}
 	args = append(args, []byte("SETNAME"), []byte("rdbc"))
-	if err := c.Write(args...); err != nil {
-		return err
-	}
-	t, err := c.ReadValue(ctx)
+	t, err := c.Exec(ctx, args...)
 	if err != nil {
 		return err
 	}
@@ -203,7 +200,9 @@ func SkipReply(d Decoder, t Token) error {
 	return nil
 }
 
-func (c *Client) write(args ...[]byte) error {
+// Write queues a command with the given arguments. Call
+// [Client.Flush] to flush the commands to the connection.
+func (c *Client) Write(args ...[]byte) error {
 	if err := c.E.WriteToken(ArrayLen(len(args))); err != nil {
 		return err
 	}
@@ -215,12 +214,16 @@ func (c *Client) write(args ...[]byte) error {
 	return nil
 }
 
-// Write queues a command with the given arguments and flushes it.
-func (c *Client) Write(args ...[]byte) error {
-	if err := c.write(args...); err != nil {
+func (c *Client) Flush() error {
+	return c.E.Flush()
+}
+
+// WriteAndFlush calls [Client.Write] and [Client.Flush].
+func (c *Client) WriteAndFlush(args ...[]byte) error {
+	if err := c.Write(args...); err != nil {
 		return err
 	}
-	return c.E.Flush()
+	return c.Flush()
 }
 
 // Exec writes the command of the given arguments to the connection
@@ -230,33 +233,10 @@ func (c *Client) Write(args ...[]byte) error {
 // the [KindError] token it is. The context ends the read of the
 // reply.
 func (c *Client) Exec(ctx context.Context, args ...[]byte) (Token, error) {
-	if err := c.Write(args...); err != nil {
+	if err := c.WriteAndFlush(args...); err != nil {
 		return Token{}, err
 	}
 	return c.ReadValue(ctx)
-}
-
-// Pipe is the pipeline of a [Client], see [Client.Pipe].
-type Pipe struct {
-	c *Client
-}
-
-// Pipe returns a pipeline of the connection: the commands written to
-// it are buffered, [Pipe.Flush] writes them in one round trip. The
-// replies are read with [Client.ReadValue] in the order the commands
-// were written.
-func (c *Client) Pipe() *Pipe {
-	return &Pipe{c: c}
-}
-
-// Write queues a command with the given arguments in the pipeline.
-func (p *Pipe) Write(args ...[]byte) error {
-	return p.c.write(args...)
-}
-
-// Flush writes the commands queued in the pipeline to the server.
-func (p *Pipe) Flush() error {
-	return p.c.E.Flush()
 }
 
 // ReadValue reads one message of the connection and returns it.

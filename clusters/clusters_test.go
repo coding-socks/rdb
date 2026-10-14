@@ -574,7 +574,7 @@ func TestCluster_Refresh(t *testing.T) {
 		if n, err := fresh.Target([]byte("{user1000}.following")); err != nil || n.Addr != a0 {
 			t.Errorf("Target({user1000}.following) = %+v, want the kept node of %s", n, a0)
 		}
-		if err := old1.Write([]byte("PING")); err == nil {
+		if _, err := old1.Exec(t.Context(), []byte("PING")); err == nil {
 			t.Error("the connection of the dropped node is open")
 		}
 		if err := fresh.Close(); err != nil {
@@ -621,7 +621,7 @@ func TestCluster_Close(t *testing.T) {
 		t.Fatalf("Close() error = %v", err)
 	}
 	for _, n := range nodes {
-		if err := n.Conn.Write([]byte("PING")); err == nil {
+		if _, err := n.Conn.Exec(t.Context(), []byte("PING")); err == nil {
 			t.Errorf("the connection of the node %s is open", n.Addr)
 		}
 	}

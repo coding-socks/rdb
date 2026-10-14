@@ -73,6 +73,9 @@ func TestSyncSrc_Run(t *testing.T) {
 		if err := src.Run(t.Context(), dst); !errors.Is(err, io.EOF) {
 			t.Fatalf("Run() error = %v, want io.EOF", err)
 		}
+		if err := dst.Finish(); err != nil {
+			t.Fatal(err)
+		}
 		// The payload of a node ends its tokens, the tokens of the
 		// next node follow them in one stream, the header of the
 		// file the encoder writes once and the checksum of the
@@ -146,6 +149,9 @@ func TestSyncSrc_Run(t *testing.T) {
 				}
 				if !errors.Is(err, io.EOF) {
 					t.Fatalf("Run() error = %v, want io.EOF", err)
+				}
+				if err := dst.Finish(); err != nil {
+					t.Fatal(err)
 				}
 				if !bytes.Equal(got.Bytes(), payload1) {
 					t.Errorf("the payload = %q, want %q", got.Bytes(), payload1)
@@ -497,15 +503,14 @@ func TestAOFServerSrc(t *testing.T) {
 		{[]byte("TS.CREATE"), []byte("ts:dst"), []byte("CHUNK_SIZE"), []byte("4096"), []byte("DUPLICATE_POLICY"), []byte("block")},
 	}
 
-	pipe := seed.Pipe()
 	for _, k := range slices.Sorted(maps.Keys(want)) {
 		for _, cmd := range want[k] {
-			if err := pipe.Write(cmd...); err != nil {
+			if err := seed.Write(cmd...); err != nil {
 				t.Fatalf("failed to write command to pipe: %v", err)
 			}
 		}
 	}
-	if err := pipe.Flush(); err != nil {
+	if err := seed.Flush(); err != nil {
 		t.Fatalf("failed to flush pipe: %v", err)
 	}
 	for _, cmds := range want {

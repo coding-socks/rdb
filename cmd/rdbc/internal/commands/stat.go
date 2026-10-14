@@ -363,10 +363,7 @@ func (s *statScanner) Scan(ctx context.Context) error {
 	// The percent of the walk needs the size of the keyspace before
 	// the first page folds, the connection is idle and serves it
 	// before the commands of the walk.
-	if err := s.conn.Write([]byte("DBSIZE")); err != nil {
-		return err
-	}
-	t, err := s.conn.ReadValue(ctx)
+	t, err := s.conn.Exec(ctx, []byte("DBSIZE"))
 	if err != nil {
 		return err
 	}

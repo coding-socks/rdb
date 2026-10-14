@@ -99,12 +99,9 @@ func runCommand(ctx context.Context, w io.Writer, cluster *clusters.Cluster, arg
 		}
 	}
 	conn := node.Conn
-	if err := conn.Write(args...); err != nil {
-		return err
-	}
 	replyCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	t, err := conn.ReadValue(replyCtx)
+	t, err := conn.Exec(replyCtx, args...)
 	if err != nil {
 		return err
 	}
@@ -208,7 +205,7 @@ func (s *session) writeCmd(latestID int, args [][]byte) tea.Cmd {
 			node, _ = s.cluster.Target(keys[0])
 		}
 		conn := node.Conn
-		return writtenMsg{err: conn.Write(args...)}
+		return writtenMsg{err: conn.WriteAndFlush(args...)}
 	})
 }
 

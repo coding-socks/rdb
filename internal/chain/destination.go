@@ -2,6 +2,7 @@ package chain
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json/jsontext"
@@ -66,10 +67,11 @@ func (d *RecorderDst) Aborted() error {
 	return d.aborted
 }
 
-// RDBDst writes the tokens of an RDB stream to a writer. The dialect
+// RDBDst writes the tokens of an RDB stream to a writer. The writes
+// are buffered, the end of the stream flushes them. The dialect
 // of the head is the dialect of the file it writes.
 type RDBDst struct {
-	out     io.Writer
+	out     *bufio.Writer
 	dialect rdb.Dialect
 	enc     *rdb.FileEncoder
 }
@@ -77,7 +79,11 @@ type RDBDst struct {
 // NewRDBDst constructs an RDBDst writing to w. The head of the chain
 // names the dialect of the file the destination writes.
 func NewRDBDst(w io.Writer) *RDBDst {
-	return &RDBDst{out: w}
+	buf, ok := w.(*bufio.Writer)
+	if !ok {
+		buf = bufio.NewWriter(w)
+	}
+	return &RDBDst{out: buf}
 }
 
 // Process writes one token of the RDB stream. The head names the
@@ -100,13 +106,10 @@ func (d *RDBDst) Process(t Token) error {
 	}
 }
 
-// Finish has nothing to flush: the encoder writes every token
-// through.
 func (d *RDBDst) Finish() error {
-	return nil
+	return d.out.Flush()
 }
 
-// Abort does nothing, the caller of the chain owns the writer.
 func (d *RDBDst) Abort(err error) {}
 
 // JSONDst writes the tokens of a JSON stream to a writer.
@@ -139,13 +142,10 @@ func (d *JSONDst) Process(t Token) error {
 	}
 }
 
-// Finish has nothing to flush: the jsontext encoder writes every
-// token through.
 func (d *JSONDst) Finish() error {
 	return nil
 }
 
-// Abort does nothing, the caller of the chain owns the writer.
 func (d *JSONDst) Abort(err error) {}
 
 // AOFDst writes the commands of an AOF stream to a writer.
@@ -186,8 +186,6 @@ func (d *AOFDst) Process(t Token) error {
 	}
 }
 
-// Finish flushes the commands the encoder holds back. The end of the
-// stream commits them.
 func (d *AOFDst) Finish() error {
 	if d.enc == nil {
 		return nil
@@ -195,7 +193,6 @@ func (d *AOFDst) Finish() error {
 	return d.enc.Flush()
 }
 
-// Abort does nothing, the caller of the chain owns the writer.
 func (d *AOFDst) Abort(err error) {}
 
 // ManifestDst writes a manifest archive on a tar writer. The tokens
@@ -289,9 +286,6 @@ func (d *ManifestDst) writeEntry(e manifestEntry) error {
 	return err
 }
 
-// Finish writes the files of the transfer and ends the archive with
-// the end of the tar writer. It returns an error when the stream
-// carried no base snapshot.
 func (d *ManifestDst) Finish() error {
 	defer d.tw.Close()
 	if d.baseEnc == nil {
@@ -313,7 +307,6 @@ func (d *ManifestDst) Finish() error {
 	return nil
 }
 
-// Abort does nothing, the caller of the chain owns the writer.
 func (d *ManifestDst) Abort(err error) {
 	d.tw.Close()
 }
@@ -323,7 +316,7 @@ func (d *ManifestDst) Abort(err error) {
 // kind list can be reduced using kind.
 type ServerDst struct {
 	ctx  context.Context
-	c    *clusters.Cluster // the cluster the keys are routed in
+	c    *clusters.Cluster
 	kind Kind
 
 	batchN  int
@@ -407,8 +400,6 @@ func (d *ServerDst) Process(t Token) error {
 	}
 }
 
-// Finish sends the commands of the batches of the nodes. The
-// connections of the nodes are closed by the cluster of the chain.
 func (d *ServerDst) Finish() error {
 	for _, n := range d.c.All() {
 		if err := d.flush(n.Conn); err != nil {
@@ -418,8 +409,6 @@ func (d *ServerDst) Finish() error {
 	return nil
 }
 
-// Abort releases nothing. The keys the batches sent stay stored, and
-// the connections of the nodes are closed by the caller of the chain.
 func (d *ServerDst) Abort(err error) {}
 
 // restoreCommand builds the RESTORE command of a key of a scan. The
@@ -444,6 +433,9 @@ func restoreCommand(t dump.Token) aof.Token {
 func (d *ServerDst) flush(conn *resp.Client) error {
 	batch := d.batches[conn]
 	delete(d.batches, conn)
+	if err := conn.Flush(); err != nil {
+		return err
+	}
 	if batch == 0 {
 		return nil
 	}
