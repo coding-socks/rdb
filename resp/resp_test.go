@@ -518,7 +518,7 @@ func TestConn_Auth(t *testing.T) {
 			}
 			defer nc.Close()
 			nc.SetDeadline(time.Now().Add(10 * time.Second))
-			buf := make([]byte, 1024)
+			buf := make([]byte, 256)
 
 			for _, rr := range tt.rrs {
 				if _, err := nc.Write(rr.cmd); err != nil {
