@@ -16,7 +16,6 @@ import (
 func RunTestcontainer(t *testing.T) *Container {
 	server, err := testcontainers.Run(t.Context(), "redis:latest",
 		testcontainers.WithLogger(log.New(io.Discard, "", 0)),
-		testcontainers.WithName("rdbc-redis"),
 		testcontainers.WithExposedPorts("6379/tcp"),
 		testcontainers.WithWaitStrategy(wait.ForListeningPort("6379/tcp")),
 	)
