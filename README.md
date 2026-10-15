@@ -2,7 +2,7 @@
 
 # RDB
 
-An RDB (Redis Database) reader written in Go.
+An RDB (Redis Database) reader and writer written in Go.
 
 ## Introduction
 
@@ -20,6 +20,20 @@ Beta version will be considered when the feature set covers the documents the im
 API is reached a mature state.
 
 Stable version will be considered only if enough positive feedback is gathered to lock the public API.
+
+## rdbc
+
+`rdbc` is a CLI tool that is part of this project. I found that the best way to design the API of the library is to use it. "Eating your own dog food." 
+
+```
+usage: rdbc <command> [flags] [args...]
+
+commands:
+  client    connect to a Redis compatible server and read/write to it
+  transfer  transfer the keys between files and Redis compatible servers
+  serve     serve an RDB file to connecting replicas
+  stat      show size statistics of the keyspace of a server
+```
 
 ## Documents
 
