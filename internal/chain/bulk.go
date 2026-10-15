@@ -64,16 +64,6 @@ func WithCursor(cursor uint64) BulkOption {
 	}
 }
 
-// WithQueueThreshold controls how many [Reply] can wait in the
-// queue before the next scan. The default is 0, which makes each
-// scan wait for the replies to finish before the next batch
-// is fetched.
-func WithQueueThreshold(queueThreshold int) BulkOption {
-	return func(b *Bulk) {
-		b.queueThreshold = max(0, queueThreshold)
-	}
-}
-
 // Bulk walks the keyspace of the server a [resp.Client] serves. It
 // runs one SCAN after the other and hands the keys of every page to
 // the visitor of [Bulk.Scan]. A Bulk is not safe for concurrent use,
@@ -84,8 +74,7 @@ type Bulk struct {
 	visit func(key []byte)
 	err   error // the first write error of the run
 
-	queue          []Reply // the replies of the commands written since the last flush
-	queueThreshold int
+	queue []Reply // the replies of the commands written since the last flush
 
 	count  []byte // the count of the SCAN commands, the keys of a page
 	match  []byte // the MATCH pattern of the SCAN commands, empty matches every key
@@ -161,7 +150,7 @@ func (b *Bulk) Scan(ctx context.Context, visit func(key []byte)) error {
 		}
 		// One SCAN of the walk is queued per round, the cursor of
 		// the next page is only known behind the reply of this one.
-		if !b.done && len(b.queue) <= b.queueThreshold {
+		if !b.done {
 			b.scan()
 		}
 		if err := b.c.Flush(); err != nil {
