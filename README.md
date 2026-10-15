@@ -1,3 +1,5 @@
+[![Go Reference](https://pkg.go.dev/badge/github.com/coding-socks/rdb.svg)](https://pkg.go.dev/github.com/coding-socks/rdb)
+
 # RDB
 
 An RDB (Redis Database) reader written in Go.
