@@ -59,7 +59,7 @@ func BenchmarkChain_Exec(b *testing.B) {
 			run := func(out io.Writer) {
 				src := NewRDBFileSrc(bytes.NewReader(file), nil)
 				end := Dst(NewRDBDst(out))
-				for _, mw := range []Middleware{ToDump(), ToRDB(), ToDump(), ToRDB()} {
+				for _, mw := range []Middleware{ToRDB(), ToDump(), ToRDB(), ToDump()} {
 					end = mw(end)
 				}
 				if err := Run(context.Background(), src, end); err != nil {
