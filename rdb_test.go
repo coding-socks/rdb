@@ -530,10 +530,10 @@ func TestToken_Bytes(t *testing.T) {
 						t.Fatalf("Bytes() = %v, want panic", tt.token.raw)
 					}
 				}()
-				tt.token.Bytes()
+				tt.token.AsBytes()
 				return
 			}
-			got := tt.token.Bytes()
+			got := tt.token.AsBytes()
 			if !bytes.Equal(got, tt.want) {
 				t.Fatalf("Bytes() = %x, want = %x", got, tt.want)
 			}
@@ -603,7 +603,7 @@ func TestToken_Bytes(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				b := tt.token.Bytes()
+				b := tt.token.AsBytes()
 				tt.check(t, tt.token, b)
 			})
 		}
@@ -613,21 +613,21 @@ func TestToken_Bytes(t *testing.T) {
 func TestToken_Clone(t *testing.T) {
 	t.Run("constructor token unchanged", func(t *testing.T) {
 		token := Str("value")
-		if got := token.Clone(); !bytes.Equal(got.Bytes(), token.Bytes()) {
-			t.Fatalf("Clone().Bytes() = %q, want = %q", got.Bytes(), token.Bytes())
+		if got := token.Clone(); !bytes.Equal(got.AsBytes(), token.AsBytes()) {
+			t.Fatalf("Clone().Bytes() = %q, want = %q", got.AsBytes(), token.AsBytes())
 		}
 	})
 	t.Run("raw bytes copied", func(t *testing.T) {
 		raw := []byte{0x2a}
 		token := Token{k: KindUint, raw: raw}
 		cloned := token.Clone()
-		if got, want := cloned.Bytes(), token.Bytes(); !bytes.Equal(got, want) {
+		if got, want := cloned.AsBytes(), token.AsBytes(); !bytes.Equal(got, want) {
 			t.Fatalf("Clone().Bytes() = %x, want = %x", got, want)
 		}
 		// The clone owns its bytes: the original raw slice can be
 		// overwritten the way the next Decoder read reuses its buffer.
 		clear(raw)
-		if got, want := cloned.Bytes(), []byte{0x2a}; !bytes.Equal(got, want) {
+		if got, want := cloned.AsBytes(), []byte{0x2a}; !bytes.Equal(got, want) {
 			t.Fatalf("Clone().Bytes() = %x, want = %x", got, want)
 		}
 	})

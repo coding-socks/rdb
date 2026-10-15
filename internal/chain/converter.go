@@ -630,7 +630,7 @@ func tokenValue(t rdb.Token) (jsontext.Token, error) {
 		ms, seq := t.StreamID()
 		return jsontext.String(fmt.Sprintf("%d-%d", ms, seq)), nil
 	}
-	return jsontext.String(base64.StdEncoding.EncodeToString(t.Bytes())), nil
+	return jsontext.String(base64.StdEncoding.EncodeToString(t.AsBytes())), nil
 }
 
 // jsonString returns a JSON string of a raw string. Binary strings

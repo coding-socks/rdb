@@ -112,7 +112,7 @@ type OpCode byte
 //   - [Token.OpCode] for the op code of a record
 //   - [Token.Time] for the expiry timestamps and pending entry times
 //   - [Token.StreamID] for the stream IDs of a stream
-//   - [Token.Bytes] for the raw bytes of a packed value
+//   - [Token.AsBytes] for the raw bytes of a packed value
 //
 // A Kind without an accessor carries the raw bytes only. Every kind but
 // [KindUnknown], the zero value, has a constructor.
@@ -223,7 +223,7 @@ type format int8
 //     Such tokens are valid indefinitely and do not need to be cloned.
 //
 // Both forms provide the same view: the value methods return the value
-// wherever it is stored, and [Token.Bytes] returns the wire format.
+// wherever it is stored, and [Token.AsBytes] returns the wire format.
 type Token struct {
 	// Tokens can exist in either a "raw" or an "exact" form.
 	// Tokens produced by the Decoder are in the "raw" form.
@@ -426,11 +426,11 @@ func (t Token) StreamID() (uint64, uint64) {
 	}
 }
 
-// Bytes returns the raw bytes of the token. If the token carries no raw
+// AsBytes returns the raw bytes of the token. If the token carries no raw
 // bytes, e.g. it was not read from a stream, the wire format is built from
 // the available values. The bytes of a token read from a stream are only
 // valid until the next [Decoder] call, see [Token.Clone].
-func (t Token) Bytes() []byte {
+func (t Token) AsBytes() []byte {
 	if t.raw != nil {
 		return t.raw
 	}
@@ -786,7 +786,7 @@ func Float32(f float32) Token { return Token{k: KindFloat32, num: uint64(math.Fl
 // Float64 constructs a Token representing a 64-bit floating-point
 // number stored as its IEEE-754 bit pattern. The scores of a sorted
 // set record that stores them as text carry the op code of the record
-// on the token, which the wire format selects on, see [Token.Bytes].
+// on the token, which the wire format selects on, see [Token.AsBytes].
 func Float64(f float64) Token { return Token{k: KindFloat64, num: math.Float64bits(f)} }
 
 // Expiry constructs a Token representing an expiry timestamp

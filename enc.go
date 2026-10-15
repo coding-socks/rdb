@@ -187,7 +187,7 @@ func (e *Encoder) WriteToken(t Token) error {
 	e.opCode = &opCode
 
 	if opCode == opCodeEndOfRDB {
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return err
 		}
 		return nil
@@ -198,7 +198,7 @@ func (e *Encoder) WriteToken(t Token) error {
 		return err
 	}
 	e.handler = handler
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return err
 	}
 	return nil
@@ -211,7 +211,7 @@ func (h ExpiryTokenEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 	if t.k != KindExpiry {
 		return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindExpiry)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return nil, err
 	}
 	return nil, nil
@@ -228,7 +228,7 @@ func (h StringTokensEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 	if t.k != KindString {
 		return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return nil, err
 	}
 	if h.i >= (h.N - 1) {
@@ -249,7 +249,7 @@ func (h UintTokensEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 	if t.k != KindUint {
 		return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return nil, err
 	}
 	if h.i >= (h.N - 1) {
@@ -269,7 +269,7 @@ func (h ByteTokenEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 	if t.k != KindByte {
 		return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindByte)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return nil, err
 	}
 	return nil, nil
@@ -285,7 +285,7 @@ func (h KeyTokenEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 	if t.k != KindString {
 		return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return nil, err
 	}
 	return h.Next, nil
@@ -305,7 +305,7 @@ func (h ListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -315,7 +315,7 @@ func (h ListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if h.i >= (h.n - 1) {
@@ -340,7 +340,7 @@ func (h ZsetEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64() * 2
@@ -354,7 +354,7 @@ func (h ZsetEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != k {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, k)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if h.i >= (h.n - 1) {
@@ -373,7 +373,7 @@ func (h HashEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 	if t.k != KindUint {
 		return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return nil, err
 	}
 	return StringTokensEncoder{N: t.Uint64() * 2}, nil
@@ -388,7 +388,7 @@ func (h ZipPackEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -397,7 +397,7 @@ func (h ZipPackEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindZipMap {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindZipMap)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -414,7 +414,7 @@ func (h ZipListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -423,7 +423,7 @@ func (h ZipListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindZipList {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindZipList)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -440,7 +440,7 @@ func (h SetIntSetEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -449,7 +449,7 @@ func (h SetIntSetEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindSetIntSet {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindSetIntSet)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -466,7 +466,7 @@ func (h ZsetListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -475,7 +475,7 @@ func (h ZsetListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindZsetList {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindZsetList)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -497,7 +497,7 @@ func (h QuickListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -507,7 +507,7 @@ func (h QuickListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindQuickList {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindQuickList)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if h.i >= (h.n - 1) {
@@ -533,7 +533,7 @@ func (h QuickList2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -543,7 +543,7 @@ func (h QuickList2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindQuickList {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindQuickList)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if h.i >= (h.n - 1) {
@@ -571,7 +571,7 @@ func (h StreamListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64() * 2 // each entry is a stream ID and a listpack
@@ -591,7 +591,7 @@ func (h StreamListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != k {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, k)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -605,7 +605,7 @@ func (h StreamListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -617,7 +617,7 @@ func (h StreamListEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -685,7 +685,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 1
@@ -694,7 +694,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 2
@@ -703,7 +703,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if *e.opCode >= opCodeStreamListpacks2 {
@@ -716,7 +716,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 4
@@ -725,7 +725,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -740,7 +740,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindStreamID {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindStreamID)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -749,7 +749,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindTime {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindTime)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -758,7 +758,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -772,7 +772,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -813,7 +813,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -827,7 +827,7 @@ func (h StreamGroupEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindStreamID {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindStreamID)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -853,7 +853,7 @@ func (h StreamConsumerEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error)
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if *e.opCode >= opCodeStreamListpacks3 {
@@ -866,7 +866,7 @@ func (h StreamConsumerEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error)
 		if t.k != KindTime {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindTime)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 2
@@ -875,7 +875,7 @@ func (h StreamConsumerEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error)
 		if t.k != KindTime {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindTime)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 3
@@ -884,7 +884,7 @@ func (h StreamConsumerEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error)
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -898,7 +898,7 @@ func (h StreamConsumerEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error)
 		if t.k != KindStreamID {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindStreamID)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -925,7 +925,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 1
@@ -934,7 +934,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 2
@@ -943,7 +943,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.p = t.Uint64()
@@ -958,7 +958,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 4
@@ -967,7 +967,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -987,7 +987,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 6
@@ -996,7 +996,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 7
@@ -1005,7 +1005,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -1024,7 +1024,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 9
@@ -1033,7 +1033,7 @@ func (h StreamIdmpEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -1055,7 +1055,7 @@ func (h KeyMetaEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.classes = t.Uint64()
@@ -1068,7 +1068,7 @@ func (h KeyMetaEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindByte {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindByte)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 2
@@ -1094,7 +1094,7 @@ func (h KeyMetaEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 // the EOF module op code.
 func writeModuleValue(e *Encoder, t Token) (bool, error) {
 	if t.k == KindOpCode {
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return true, err
 		}
 		return true, nil
@@ -1102,7 +1102,7 @@ func writeModuleValue(e *Encoder, t Token) (bool, error) {
 	if t.format != formatModule {
 		return false, fmt.Errorf("unexpected format %d, expected %d", t.format, formatModule)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return false, err
 	}
 	return false, nil
@@ -1122,7 +1122,7 @@ func (h Module2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.Step++
@@ -1131,7 +1131,7 @@ func (h Module2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString || t.format != formatModuleID {
 			return nil, fmt.Errorf("unexpected token %s, expected %d format", t.k, formatModuleID)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.Step++
@@ -1168,7 +1168,7 @@ func (h HashMetadataEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindExpiry {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindExpiry)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.Step = 1
@@ -1177,7 +1177,7 @@ func (h HashMetadataEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1190,7 +1190,7 @@ func (h HashMetadataEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.sub = StringTokensEncoder{N: 2}
@@ -1225,7 +1225,7 @@ func (h HashListpackExEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error)
 		if t.k != KindExpiry {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindExpiry)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -1234,7 +1234,7 @@ func (h HashListpackExEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error)
 		if t.k != KindZipList {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindZipList)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -1256,7 +1256,7 @@ func (h HashTemplateEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.id = t.Uint64()
@@ -1266,7 +1266,7 @@ func (h HashTemplateEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1283,7 +1283,7 @@ func (h HashTemplateEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if h.i >= (h.n - 1) {
@@ -1303,7 +1303,7 @@ func (h HashTmplArrayRefEncoder) Handle(e *Encoder, t Token) (TokenEncoder, erro
 	if t.k != KindUint {
 		return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 	}
-	if _, err := e.w.Write(t.Bytes()); err != nil {
+	if _, err := e.w.Write(t.AsBytes()); err != nil {
 		return nil, err
 	}
 	n, ok := e.templates[t.Uint64()]
@@ -1327,7 +1327,7 @@ func (h HashTmplSelfEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		switch t.Uint64() {
@@ -1343,10 +1343,10 @@ func (h HashTmplSelfEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindZipList {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindZipList)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
-		n, err := lpCountEntries(t.Bytes())
+		n, err := lpCountEntries(t.AsBytes())
 		if err != nil {
 			return nil, err
 		}
@@ -1362,7 +1362,7 @@ func (h HashTmplSelfEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1372,7 +1372,7 @@ func (h HashTmplSelfEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if h.i >= (h.n - 1) {
@@ -1390,7 +1390,7 @@ func (h HashTmplSelfEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindZipList {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindZipList)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		return nil, nil
@@ -1398,7 +1398,7 @@ func (h HashTmplSelfEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if h.i >= (h.n - 1) {
@@ -1426,7 +1426,7 @@ func (h ArrayEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1436,7 +1436,7 @@ func (h ArrayEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		if t.Uint64() == 1 {
@@ -1449,7 +1449,7 @@ func (h ArrayEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 3
@@ -1458,7 +1458,7 @@ func (h ArrayEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 4
@@ -1467,7 +1467,7 @@ func (h ArrayEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.tag = t.Uint64()
@@ -1487,7 +1487,7 @@ func (h ArrayEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != k {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, k)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -1514,7 +1514,7 @@ func (h CronEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 1
@@ -1523,7 +1523,7 @@ func (h CronEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindTime {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindTime)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step++
@@ -1532,7 +1532,7 @@ func (h CronEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1547,7 +1547,7 @@ func (h CronEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -1559,7 +1559,7 @@ func (h CronEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1573,7 +1573,7 @@ func (h CronEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -1600,7 +1600,7 @@ func (h Hash2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1614,7 +1614,7 @@ func (h Hash2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 2
@@ -1623,7 +1623,7 @@ func (h Hash2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 3
@@ -1632,7 +1632,7 @@ func (h Hash2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindTime {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindTime)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++
@@ -1660,7 +1660,7 @@ func (h SlotImportEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindString {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindString)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 1
@@ -1669,7 +1669,7 @@ func (h SlotImportEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.n = t.Uint64()
@@ -1683,7 +1683,7 @@ func (h SlotImportEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.step = 3
@@ -1692,7 +1692,7 @@ func (h SlotImportEncoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 		if t.k != KindUint {
 			return nil, fmt.Errorf("unexpected token %s, expected %s", t.k, KindUint)
 		}
-		if _, err := e.w.Write(t.Bytes()); err != nil {
+		if _, err := e.w.Write(t.AsBytes()); err != nil {
 			return nil, err
 		}
 		h.i++

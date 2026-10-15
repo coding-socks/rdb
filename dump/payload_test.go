@@ -73,8 +73,8 @@ func Test_Encode_Decode(t *testing.T) {
 					}
 					continue
 				}
-				if !bytes.Equal(got[i].Bytes(), want.Bytes()) {
-					t.Errorf("the token %d = %x, want %x", i, got[i].Bytes(), want.Bytes())
+				if !bytes.Equal(got[i].AsBytes(), want.AsBytes()) {
+					t.Errorf("the token %d = %x, want %x", i, got[i].AsBytes(), want.AsBytes())
 				}
 			}
 		})
@@ -95,7 +95,7 @@ func Test_Encode_Decode(t *testing.T) {
 		}
 		for _, t := range got {
 			if t.Kind() == rdb.KindQuickList {
-				packed = t.Bytes()
+				packed = t.AsBytes()
 			}
 		}
 	}

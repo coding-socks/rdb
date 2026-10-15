@@ -23,7 +23,7 @@
 // copies them out. Tokens built by the constructors (e.g., [Str], [Uint])
 // hold their values instead, and the [Blob] and [Packed] constructors hold
 // the raw bytes to write verbatim. Both provide the same view: the value
-// methods return the value wherever it is stored, and [Token.Bytes] returns
+// methods return the value wherever it is stored, and [Token.AsBytes] returns
 // the wire format.
 //
 // # Dialects
