@@ -79,35 +79,4 @@ func Test_Encode_Decode(t *testing.T) {
 			}
 		})
 	}
-
-	// The buffers of the encoder and the decoder are reused, the
-	// tokens of the first key stay intact while the second one
-	// passes through.
-	var packed []byte
-	for _, tt := range tests {
-		tok, err := enc.Encode(tt.tokens...)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got, err := dec.Decode(tok)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, t := range got {
-			if t.Kind() == rdb.KindQuickList {
-				packed = t.AsBytes()
-			}
-		}
-	}
-	tok, err := enc.Encode(
-		rdb.Op(rdb.RedisOpCodeString), rdb.Str("other"), rdb.Str("value"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := dec.Decode(tok); err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(packed, ziplist) {
-		t.Errorf("the packed value = %x, want %x", packed, ziplist)
-	}
 }

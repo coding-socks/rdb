@@ -78,7 +78,7 @@ func TestRedisDialect_Decoder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := dialect.WithVersion(tt.version).Decoder(tt.op)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Decoder(%s) at version %d error = %v, wantErr %v", dialect.OpCodeString(tt.op), tt.version, err, tt.wantErr)
+				t.Errorf("Decoder(%s) at version %d error = %v, wantErr %v", dialect.OpCodeInfo(tt.op), tt.version, err, tt.wantErr)
 			}
 		})
 	}
@@ -154,7 +154,7 @@ func TestValkeyDialect_Decoder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := dialect.WithVersion(tt.version).Decoder(tt.op)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Decoder(%s) at version %d error = %v, wantErr %v", dialect.OpCodeString(tt.op), tt.version, err, tt.wantErr)
+				t.Errorf("Decoder(%s) at version %d error = %v, wantErr %v", dialect.OpCodeInfo(tt.op), tt.version, err, tt.wantErr)
 			}
 		})
 	}
@@ -215,7 +215,7 @@ func TestKeyDBDialect_Decoder(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := dialect.WithVersion(tt.version).Decoder(tt.op)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Decoder(%s) at version %d error = %v, wantErr %v", dialect.OpCodeString(tt.op), tt.version, err, tt.wantErr)
+				t.Errorf("Decoder(%s) at version %d error = %v, wantErr %v", dialect.OpCodeInfo(tt.op), tt.version, err, tt.wantErr)
 			}
 		})
 	}

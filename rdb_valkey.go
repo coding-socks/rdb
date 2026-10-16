@@ -48,6 +48,8 @@ const (
 	ValkeyOpCodeFunc2
 	// ValkeyOpCodeSlotInfo indicates slot id and size (cluster mode only).
 	ValkeyOpCodeSlotInfo
+	// ValkeyOpCodeSlotImport stores the state of a slot import.
+	ValkeyOpCodeSlotImport
 )
 
 const (
@@ -74,70 +76,69 @@ const (
 	ValkeyOpCodeSetListpack
 	ValkeyOpCodeStreamListpacks3
 
-	// ValkeyOpCodeHash2 is a hash with per field expiry. The Redis dialect
-	// uses the same number for its deprecated HashMetadataPreGa.
+	// ValkeyOpCodeHash2 is a hash with per field expiry.
 	ValkeyOpCodeHash2
 )
 
-// Valkey op codes that share their number with a Redis op code of a
-// different meaning.
-const (
-	// ValkeyOpCodeSlotImport stores the state of a slot import. The Redis
-	// dialect uses the same number for its KeyMeta.
-	ValkeyOpCodeSlotImport OpCode = 243
-)
-
-// valkeyOpCodeVersion holds the version of the RDB format that
+// valkeyOpCodeInfo holds the version of the RDB format that
 // introduced every op code of the dialect. The op codes Valkey shares
 // with Redis carry the versions of the Redis dialect up to the fork of
 // Valkey 7.2 (the version 11), the op codes of the split the version
 // restart of Valkey 9.0. The dispatch of the dialect rejects the op
 // codes the map does not carry.
-var valkeyOpCodeVersion = map[OpCode]int{
-	// The op codes of the shared history.
-	ValkeyOpCodeSelectDB:      1,
-	ValkeyOpCodeExpirySeconds: 1,
-	ValkeyOpCodeString:        1,
-	ValkeyOpCodeList:          1,
-	ValkeyOpCodeSet:           1,
-	ValkeyOpCodeZset:          1,
-	ValkeyOpCodeHash:          1,
+var valkeyOpCodeInfo = map[OpCode]OpCodeInfo{
+	// RDB version 1, Redis 1.0.
+	ValkeyOpCodeSelectDB:      {Ver: 1, Name: "SelectDB"},
+	ValkeyOpCodeExpirySeconds: {Ver: 1, Name: "ExpirySeconds"},
+	ValkeyOpCodeString:        {Ver: 1, Name: "String"},
+	ValkeyOpCodeList:          {Ver: 1, Name: "List"},
+	ValkeyOpCodeSet:           {Ver: 1, Name: "Set"},
+	ValkeyOpCodeZset:          {Ver: 1, Name: "Zset"},
+	ValkeyOpCodeHash:          {Ver: 1, Name: "Hash"},
 
-	ValkeyOpCodeHashZipmap:  2,
-	ValkeyOpCodeListZiplist: 2,
-	ValkeyOpCodeSetIntset:   2,
-	ValkeyOpCodeZsetZiplist: 2,
+	// RDB version 2, Redis 2.4.
+	ValkeyOpCodeHashZipmap:  {Ver: 2, Name: "HashZipmap"},
+	ValkeyOpCodeListZiplist: {Ver: 2, Name: "ListZiplist"},
+	ValkeyOpCodeSetIntset:   {Ver: 2, Name: "SetIntset"},
+	ValkeyOpCodeZsetZiplist: {Ver: 2, Name: "ZsetZiplist"},
 
-	ValkeyOpCodeExpiryMilli: 3,
+	// RDB version 3, Redis 2.4.
+	ValkeyOpCodeExpiryMilli: {Ver: 3, Name: "ExpiryMilli"},
 
-	ValkeyOpCodeHashZiplist: 4,
+	// RDB version 4, Redis 2.4.
+	ValkeyOpCodeHashZiplist: {Ver: 4, Name: "HashZiplist"},
 
-	ValkeyOpCodeListQuicklist: 7,
-	ValkeyOpCodeAux:           7,
-	ValkeyOpCodeResizeDB:      7,
+	// RDB version 7, Redis 3.2.
+	ValkeyOpCodeListQuicklist: {Ver: 7, Name: "ListQuicklist"},
+	ValkeyOpCodeAux:           {Ver: 7, Name: "Aux"},
+	ValkeyOpCodeResizeDB:      {Ver: 7, Name: "ResizeDB"},
 
-	ValkeyOpCodeZset2:   8,
-	ValkeyOpCodeModule2: 8,
+	// RDB version 8, Redis 4.0.
+	ValkeyOpCodeZset2:   {Ver: 8, Name: "Zset2"},
+	ValkeyOpCodeModule2: {Ver: 8, Name: "Module2"},
 
-	ValkeyOpCodeStreamListpacks: 9,
-	ValkeyOpCodeFreq:            9,
-	ValkeyOpCodeIdle:            9,
-	ValkeyOpCodeModuleAux:       9,
+	// RDB version 9, Redis 5.0.
+	ValkeyOpCodeStreamListpacks: {Ver: 9, Name: "StreamListpacks"},
+	ValkeyOpCodeFreq:            {Ver: 9, Name: "Freq"},
+	ValkeyOpCodeIdle:            {Ver: 9, Name: "Idle"},
+	ValkeyOpCodeModuleAux:       {Ver: 9, Name: "ModuleAux"},
 
-	ValkeyOpCodeFunc:             10,
-	ValkeyOpCodeFunc2:            10,
-	ValkeyOpCodeHashListpack:     10,
-	ValkeyOpCodeZsetListpack:     10,
-	ValkeyOpCodeListQuicklist2:   10,
-	ValkeyOpCodeStreamListpacks2: 10,
+	// RDB version 10, Redis 7.0.
+	ValkeyOpCodeFunc:             {Ver: 10, Name: "Func"},
+	ValkeyOpCodeFunc2:            {Ver: 10, Name: "Func2"},
+	ValkeyOpCodeHashListpack:     {Ver: 10, Name: "HashListpack"},
+	ValkeyOpCodeZsetListpack:     {Ver: 10, Name: "ZsetListpack"},
+	ValkeyOpCodeListQuicklist2:   {Ver: 10, Name: "ListQuicklist2"},
+	ValkeyOpCodeStreamListpacks2: {Ver: 10, Name: "StreamListpacks2"},
 
-	ValkeyOpCodeSetListpack:      11,
-	ValkeyOpCodeStreamListpacks3: 11,
+	// RDB version 11, Redis 7.2.
+	ValkeyOpCodeSetListpack:      {Ver: 11, Name: "SetListpack"},
+	ValkeyOpCodeStreamListpacks3: {Ver: 11, Name: "StreamListpacks3"},
 
-	// The op codes of the split, the version restart of Valkey 9.0.
-	ValkeyOpCodeHash2:      valkeyMaxVersion,
-	ValkeyOpCodeSlotImport: valkeyMaxVersion,
-	ValkeyOpCodeSlotInfo:   valkeyMaxVersion,
+	// RDB version 80, Valkey 9.0.
+	ValkeyOpCodeHash2:      {Ver: 80, Name: "Hash2"},
+	ValkeyOpCodeSlotImport: {Ver: 80, Name: "SlotImport"},
+	ValkeyOpCodeSlotInfo:   {Ver: 80, Name: "SlotInfo"},
 }
 
 // Header returns the magic string of Valkey and the version of the
@@ -156,90 +157,16 @@ func (d ValkeyDialect) WithVersion(version int) Dialect {
 	return ValkeyDialect{V: version}
 }
 
-// introduced returns the version of the RDB format that introduced the
-// op code: the op codes of the split carry the version restart of
-// Valkey 9.0, the shared ones the versions of the Redis dialect behind
-// the fork.
-func (d ValkeyDialect) introduced(op OpCode) int {
-	return valkeyOpCodeVersion[op]
-}
-
 func (d ValkeyDialect) Commands() commands.Table {
 	return commands.ValkeyCommands
 }
 
-// OpCodeString returns the name of the op code in the Valkey dialect.
-func (ValkeyDialect) OpCodeString(op OpCode) string {
-	switch op {
-	case ValkeyOpCodeEndOfRDB:
-		return "EndOfRDB"
-	case ValkeyOpCodeSelectDB:
-		return "SelectDB"
-	case ValkeyOpCodeExpirySeconds:
-		return "ExpirySeconds"
-	case ValkeyOpCodeExpiryMilli:
-		return "ExpiryMilli"
-	case ValkeyOpCodeResizeDB:
-		return "ResizeDB"
-	case ValkeyOpCodeAux:
-		return "Aux"
-	case ValkeyOpCodeFreq:
-		return "Freq"
-	case ValkeyOpCodeIdle:
-		return "Idle"
-	case ValkeyOpCodeModuleAux:
-		return "ModuleAux"
-	case ValkeyOpCodeFunc2:
-		return "Func2"
-	case ValkeyOpCodeSlotInfo:
-		return "SlotInfo"
-	case ValkeyOpCodeSlotImport:
-		return "SlotImport"
-
-	case ValkeyOpCodeString:
-		return "String"
-	case ValkeyOpCodeList:
-		return "List"
-	case ValkeyOpCodeSet:
-		return "Set"
-	case ValkeyOpCodeZset:
-		return "Zset"
-	case ValkeyOpCodeHash:
-		return "Hash"
-	case ValkeyOpCodeZset2:
-		return "Zset2"
-	case ValkeyOpCodeModule2:
-		return "Module2"
-	case ValkeyOpCodeHashZipmap:
-		return "HashZipmap"
-	case ValkeyOpCodeListZiplist:
-		return "ListZiplist"
-	case ValkeyOpCodeSetIntset:
-		return "SetIntset"
-	case ValkeyOpCodeZsetZiplist:
-		return "ZsetZiplist"
-	case ValkeyOpCodeHashZiplist:
-		return "HashZiplist"
-	case ValkeyOpCodeListQuicklist:
-		return "ListQuicklist"
-	case ValkeyOpCodeStreamListpacks:
-		return "StreamListpacks"
-	case ValkeyOpCodeHashListpack:
-		return "HashListpack"
-	case ValkeyOpCodeZsetListpack:
-		return "ZsetListpack"
-	case ValkeyOpCodeListQuicklist2:
-		return "ListQuicklist2"
-	case ValkeyOpCodeStreamListpacks2:
-		return "StreamListpacks2"
-	case ValkeyOpCodeSetListpack:
-		return "SetListpack"
-	case ValkeyOpCodeStreamListpacks3:
-		return "StreamListpacks3"
-	case ValkeyOpCodeHash2:
-		return "Hash2"
+func (ValkeyDialect) OpCodeInfo(op OpCode) OpCodeInfo {
+	info, ok := valkeyOpCodeInfo[op]
+	if !ok {
+		return OpCodeInfo{Name: "Unknown"}
 	}
-	return "Unknown"
+	return info
 }
 
 // Decoder returns the token decoder of the Valkey op code. It fails
@@ -252,7 +179,7 @@ func (d ValkeyDialect) Decoder(op OpCode) (TokenDecoder, error) {
 		return nil, errInvalidOpCode(d, op)
 	}
 	_, ver := d.Header()
-	return checkDecoder(d, op, handler, d.introduced(op), ver)
+	return checkDecoder(d, op, handler, d.OpCodeInfo(op), ver)
 }
 
 // valkeyDecoder returns the token decoder of the op code, ok reports
@@ -276,7 +203,7 @@ func valkeyDecoder(op OpCode) (TokenDecoder, bool) {
 		return UintTokensDecoder{N: 3}, true
 	case ValkeyOpCodeFreq:
 		return ByteTokenDecoder{N: 1}, true
-	case ValkeyOpCodeSlotImport: // 243: Valkey stores the slot import state here, Redis uses KeyMeta.
+	case ValkeyOpCodeSlotImport:
 		return SlotImportDecoder{}, true
 	case ValkeyOpCodeModuleAux:
 		return Module2Decoder{Step: 1}, true
@@ -328,7 +255,7 @@ func (d ValkeyDialect) Encoder(op OpCode) (TokenEncoder, error) {
 		return nil, errInvalidOpCode(d, op)
 	}
 	_, ver := d.Header()
-	return checkEncoder(d, op, handler, d.introduced(op), ver)
+	return checkEncoder(d, op, handler, d.OpCodeInfo(op), ver)
 }
 
 // valkeyEncoder returns the token encoder of the op code, ok reports
@@ -352,7 +279,7 @@ func valkeyEncoder(op OpCode) (TokenEncoder, bool) {
 		return UintTokensEncoder{N: 3}, true
 	case ValkeyOpCodeFreq:
 		return ByteTokenEncoder{N: 1}, true
-	case ValkeyOpCodeSlotImport: // 243: Valkey stores the slot import state here, Redis uses KeyMeta.
+	case ValkeyOpCodeSlotImport:
 		return SlotImportEncoder{}, true
 	case ValkeyOpCodeModuleAux:
 		return Module2Encoder{Step: 1}, true

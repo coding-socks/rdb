@@ -45,7 +45,10 @@ const (
 	KeyDBOpCodeZset
 	KeyDBOpCodeHash
 	KeyDBOpCodeZset2
-	_ // 6 is the Redis ModulePreGa
+	// KeyDBOpCodeModulePreGa indicates module data for 4.0 release candidate.
+	//
+	// Deprecated: KeyDBOpCodeModulePreGa exists for historical compatibility.
+	KeyDBOpCodeModulePreGa
 	KeyDBOpCodeModule2
 	_ // 8
 	KeyDBOpCodeHashZipmap
@@ -55,8 +58,6 @@ const (
 	KeyDBOpCodeHashZiplist
 	KeyDBOpCodeListQuicklist
 	KeyDBOpCodeStreamListpacks
-	KeyDBOpCodeHashListpack
-	KeyDBOpCodeZsetListpack
 )
 
 // KeyDB specific op codes.
@@ -64,6 +65,56 @@ const (
 	// KeyDBOpCodeCron stores a cron job.
 	KeyDBOpCodeCron OpCode = 64
 )
+
+// keyDBOpCodeInfo holds the info of the RDB format that introduced
+// every op code of the dialect. The versions follow from the release
+// history of Redis: a file of a version cannot contain the op codes of a
+// later one, the dispatch of the dialect rejects them. The versions 4 and
+// 5 introduced no op codes, the checksum is the addition of the version 5.
+// Redis Enterprise writes its op codes in files of every version the
+// dialect understands.
+var keyDBOpCodeInfo = map[OpCode]OpCodeInfo{
+	// RDB version 1, Redis 1.0.
+	KeyDBOpCodeEndOfRDB:      {Ver: 1, Name: "EndOfRDB"},
+	KeyDBOpCodeSelectDB:      {Ver: 1, Name: "SelectDB"},
+	KeyDBOpCodeExpirySeconds: {Ver: 1, Name: "ExpirySeconds"},
+	KeyDBOpCodeString:        {Ver: 1, Name: "String"},
+	KeyDBOpCodeList:          {Ver: 1, Name: "List"},
+	KeyDBOpCodeSet:           {Ver: 1, Name: "Set"},
+	KeyDBOpCodeZset:          {Ver: 1, Name: "Zset"},
+	KeyDBOpCodeHash:          {Ver: 1, Name: "Hash"},
+
+	// RDB version 2, Redis 2.4.
+	KeyDBOpCodeHashZipmap:  {Ver: 2, Name: "HashZipmap"},
+	KeyDBOpCodeListZiplist: {Ver: 2, Name: "ListZiplist"},
+	KeyDBOpCodeSetIntset:   {Ver: 2, Name: "SetIntset"},
+	KeyDBOpCodeZsetZiplist: {Ver: 2, Name: "ZsetZiplist"},
+
+	// RDB version 3, Redis 2.4.
+	KeyDBOpCodeExpiryMilli: {Ver: 3, Name: "ExpiryMilli"},
+
+	// RDB version 4, Redis 2.4.
+	KeyDBOpCodeHashZiplist: {Ver: 4, Name: "HashZiplist"},
+
+	// RDB version 7, Redis 3.2.
+	KeyDBOpCodeListQuicklist: {Ver: 7, Name: "ListQuicklist"},
+	KeyDBOpCodeAux:           {Ver: 7, Name: "Aux"},
+	KeyDBOpCodeResizeDB:      {Ver: 7, Name: "ResizeDB"},
+
+	// RDB version 8, Redis 4.0.
+	KeyDBOpCodeZset2:       {Ver: 8, Name: "Zset2"},
+	KeyDBOpCodeModulePreGa: {Ver: 8, Name: "ModulePreGa"},
+	KeyDBOpCodeModule2:     {Ver: 8, Name: "Module2"},
+
+	// RDB version 9, Redis 5.0.
+	KeyDBOpCodeStreamListpacks: {Ver: 9, Name: "StreamListpacks"},
+	KeyDBOpCodeFreq:            {Ver: 9, Name: "Freq"},
+	KeyDBOpCodeIdle:            {Ver: 9, Name: "Idle"},
+	KeyDBOpCodeModuleAux:       {Ver: 9, Name: "ModuleAux"},
+
+	// KeyDB added a Cron type.
+	KeyDBOpCodeCron: {Ver: 9, Name: "Cron"},
+}
 
 // Header returns the magic string of KeyDB and the version of the
 // dialect. The zero V selects the newest one the dialect
@@ -81,78 +132,16 @@ func (d KeyDBDialect) WithVersion(version int) Dialect {
 	return KeyDBDialect{V: version}
 }
 
-// introduced returns the version of the RDB format that introduced the
-// op code: the cron op code is the one of the fork, the shared ones
-// carry the versions of the Redis dialect.
-func (d KeyDBDialect) introduced(op OpCode) int {
-	if op == KeyDBOpCodeCron {
-		return keydbMaxVersion
-	}
-	return redisOpCodeVersion[op]
-}
-
 func (d KeyDBDialect) Commands() commands.Table {
 	return commands.KeyDBCommands
 }
 
-// OpCodeString returns the name of the op code in the KeyDB dialect.
-func (KeyDBDialect) OpCodeString(op OpCode) string {
-	switch op {
-	case KeyDBOpCodeEndOfRDB:
-		return "EndOfRDB"
-	case KeyDBOpCodeSelectDB:
-		return "SelectDB"
-	case KeyDBOpCodeExpirySeconds:
-		return "ExpirySeconds"
-	case KeyDBOpCodeExpiryMilli:
-		return "ExpiryMilli"
-	case KeyDBOpCodeResizeDB:
-		return "ResizeDB"
-	case KeyDBOpCodeAux:
-		return "Aux"
-	case KeyDBOpCodeFreq:
-		return "Freq"
-	case KeyDBOpCodeIdle:
-		return "Idle"
-	case KeyDBOpCodeModuleAux:
-		return "ModuleAux"
-
-	case KeyDBOpCodeString:
-		return "String"
-	case KeyDBOpCodeList:
-		return "List"
-	case KeyDBOpCodeSet:
-		return "Set"
-	case KeyDBOpCodeZset:
-		return "Zset"
-	case KeyDBOpCodeHash:
-		return "Hash"
-	case KeyDBOpCodeZset2:
-		return "Zset2"
-	case KeyDBOpCodeModule2:
-		return "Module2"
-	case KeyDBOpCodeHashZipmap:
-		return "HashZipmap"
-	case KeyDBOpCodeListZiplist:
-		return "ListZiplist"
-	case KeyDBOpCodeSetIntset:
-		return "SetIntset"
-	case KeyDBOpCodeZsetZiplist:
-		return "ZsetZiplist"
-	case KeyDBOpCodeHashZiplist:
-		return "HashZiplist"
-	case KeyDBOpCodeListQuicklist:
-		return "ListQuicklist"
-	case KeyDBOpCodeStreamListpacks:
-		return "StreamListpacks"
-	case KeyDBOpCodeHashListpack:
-		return "HashListpack"
-	case KeyDBOpCodeZsetListpack:
-		return "ZsetListpack"
-	case KeyDBOpCodeCron:
-		return "Cron"
+func (KeyDBDialect) OpCodeInfo(op OpCode) OpCodeInfo {
+	info, ok := keyDBOpCodeInfo[op]
+	if !ok {
+		return OpCodeInfo{Name: "Unknown"}
 	}
-	return "Unknown"
+	return info
 }
 
 // Decoder returns the token decoder of the KeyDB op code. It fails
@@ -165,7 +154,7 @@ func (d KeyDBDialect) Decoder(op OpCode) (TokenDecoder, error) {
 		return nil, errInvalidOpCode(d, op)
 	}
 	_, ver := d.Header()
-	return checkDecoder(d, op, handler, d.introduced(op), ver)
+	return checkDecoder(d, op, handler, d.OpCodeInfo(op), ver)
 }
 
 // keydbDecoder returns the token decoder of the op code, ok reports
@@ -227,7 +216,7 @@ func (d KeyDBDialect) Encoder(op OpCode) (TokenEncoder, error) {
 		return nil, errInvalidOpCode(d, op)
 	}
 	_, ver := d.Header()
-	return checkEncoder(d, op, handler, d.introduced(op), ver)
+	return checkEncoder(d, op, handler, d.OpCodeInfo(op), ver)
 }
 
 // keydbEncoder returns the token encoder of the op code, ok reports

@@ -1645,8 +1645,7 @@ func (h Hash2Encoder) Handle(e *Encoder, t Token) (TokenEncoder, error) {
 }
 
 // SlotImportEncoder writes the slot import state: the job name, the number
-// of slot ranges and the ranges themselves. Valkey stores it under the op
-// code Redis uses for KeyMeta.
+// of slot ranges and the ranges themselves.
 type SlotImportEncoder struct {
 	step uint8
 	n, i uint64

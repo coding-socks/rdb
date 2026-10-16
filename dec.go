@@ -543,7 +543,7 @@ func loadZsetFloat(d *Decoder, opCode OpCode) error {
 		_, err := d.loadN(8)
 		return err
 	default:
-		panic(fmt.Sprintf("unimplemented version: %s", d.dialect.OpCodeString(opCode)))
+		panic(fmt.Sprintf("unimplemented version: %s", d.dialect.OpCodeInfo(opCode)))
 	}
 }
 
@@ -1717,8 +1717,7 @@ func (h Hash2Decoder) Handle(d *Decoder) (TokenDecoder, Token, error) {
 }
 
 // SlotImportDecoder reads the slot import state: the job name, the number of
-// slot ranges and the ranges themselves. Valkey stores it under the op code
-// Redis uses for KeyMeta.
+// slot ranges and the ranges themselves.
 type SlotImportDecoder struct {
 	step uint8
 	n, i uint64

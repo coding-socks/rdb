@@ -105,99 +105,88 @@ const (
 	RedisOpCodeSlotNum OpCode = 121
 )
 
-// redisOpCodeVersion holds the version of the RDB format that introduced
+// redisOpCodeInfo holds the version of the RDB format that introduced
 // every op code of the dialect. The versions follow from the release
 // history of Redis: a file of a version cannot contain the op codes of a
 // later one, the dispatch of the dialect rejects them. The versions 4 and
 // 5 introduced no op codes, the checksum is the addition of the version 5.
 // Redis Enterprise writes its op codes in files of every version the
 // dialect understands.
-var redisOpCodeVersion = map[OpCode]int{
-	// RDB version 1, Redis 1.0 through 2.2.
-	RedisOpCodeEndOfRDB:      1,
-	RedisOpCodeSelectDB:      1,
-	RedisOpCodeExpirySeconds: 1,
-	RedisOpCodeString:        1,
-	RedisOpCodeList:          1,
-	RedisOpCodeSet:           1,
-	RedisOpCodeZset:          1,
-	RedisOpCodeHash:          1,
-	RedisOpCodeRamLru:        1,
-	RedisOpCodeSlotNum:       1,
+var redisOpCodeInfo = map[OpCode]OpCodeInfo{
+	// RDB version 1, Redis 1.0.
+	RedisOpCodeEndOfRDB:      {Ver: 1, Name: "EndOfRDB"},
+	RedisOpCodeSelectDB:      {Ver: 1, Name: "SelectDB"},
+	RedisOpCodeExpirySeconds: {Ver: 1, Name: "ExpirySeconds"},
+	RedisOpCodeString:        {Ver: 1, Name: "String"},
+	RedisOpCodeList:          {Ver: 1, Name: "List"},
+	RedisOpCodeSet:           {Ver: 1, Name: "Set"},
+	RedisOpCodeZset:          {Ver: 1, Name: "Zset"},
+	RedisOpCodeHash:          {Ver: 1, Name: "Hash"},
+	RedisOpCodeRamLru:        {Ver: 1, Name: "RamLru"},
+	RedisOpCodeSlotNum:       {Ver: 1, Name: "SlotNum"},
 
-	// RDB version 2, Redis 2.4: the packed encodings split from the
-	// types of Redis 1.0.
-	RedisOpCodeHashZipmap:  2,
-	RedisOpCodeListZiplist: 2,
-	RedisOpCodeSetIntset:   2,
-	RedisOpCodeZsetZiplist: 2,
+	// RDB version 2, Redis 2.4.
+	RedisOpCodeHashZipmap:  {Ver: 2, Name: "HashZipmap"},
+	RedisOpCodeListZiplist: {Ver: 2, Name: "ListZiplist"},
+	RedisOpCodeSetIntset:   {Ver: 2, Name: "SetIntset"},
+	RedisOpCodeZsetZiplist: {Ver: 2, Name: "ZsetZiplist"},
 
-	// RDB version 3, a development version between Redis 2.4 and 2.6.
-	RedisOpCodeExpiryMilli: 3,
+	// RDB version 3, Redis 2.4.
+	RedisOpCodeExpiryMilli: {Ver: 3, Name: "ExpiryMilli"},
 
-	// RDB version 4, the development builds of the cycle between
-	// Redis 2.4 and 2.6 carry the hash ziplist encoding from here
-	// on, no released Redis wrote the versions 3 to 5. The encoding
-	// shipped with the version 6, the files of the versions 2 to 4
-	// in the wild carry it as well.
-	RedisOpCodeHashZiplist: 4,
+	// RDB version 4, Redis 2.4.
+	RedisOpCodeHashZiplist: {Ver: 4, Name: "HashZiplist"},
 
 	// RDB version 7, Redis 3.2.
-	RedisOpCodeListQuicklist: 7,
-	RedisOpCodeAux:           7,
-	RedisOpCodeResizeDB:      7,
+	RedisOpCodeListQuicklist: {Ver: 7, Name: "ListQuicklist"},
+	RedisOpCodeAux:           {Ver: 7, Name: "Aux"},
+	RedisOpCodeResizeDB:      {Ver: 7, Name: "ResizeDB"},
 
-	// RDB version 8, Redis 4.0: the modules.
-	RedisOpCodeZset2:       8,
-	RedisOpCodeModulePreGa: 8,
-	RedisOpCodeModule2:     8,
+	// RDB version 8, Redis 4.0.
+	RedisOpCodeZset2:       {Ver: 8, Name: "Zset2"},
+	RedisOpCodeModulePreGa: {Ver: 8, Name: "ModulePreGa"},
+	RedisOpCodeModule2:     {Ver: 8, Name: "Module2"},
 
-	// RDB version 9, Redis 5.0 through 6.2: the streams and the
-	// memory policy of a key.
-	RedisOpCodeStreamListpacks: 9,
-	RedisOpCodeFreq:            9,
-	RedisOpCodeIdle:            9,
-	RedisOpCodeModuleAux:       9,
+	// RDB version 9, Redis 5.0.
+	RedisOpCodeStreamListpacks: {Ver: 9, Name: "StreamListpacks"},
+	RedisOpCodeFreq:            {Ver: 9, Name: "Freq"},
+	RedisOpCodeIdle:            {Ver: 9, Name: "Idle"},
+	RedisOpCodeModuleAux:       {Ver: 9, Name: "ModuleAux"},
 
-	// RDB version 10, Redis 7.0: the functions and the listpack
-	// encodings.
-	RedisOpCodeFunc:             10,
-	RedisOpCodeFunc2:            10,
-	RedisOpCodeHashListpack:     10,
-	RedisOpCodeZsetListpack:     10,
-	RedisOpCodeListQuicklist2:   10,
-	RedisOpCodeStreamListpacks2: 10,
+	// RDB version 10, Redis 7.0.
+	RedisOpCodeFunc:             {Ver: 10, Name: "Func"},
+	RedisOpCodeFunc2:            {Ver: 10, Name: "Func2"},
+	RedisOpCodeHashListpack:     {Ver: 10, Name: "HashListpack"},
+	RedisOpCodeZsetListpack:     {Ver: 10, Name: "ZsetListpack"},
+	RedisOpCodeListQuicklist2:   {Ver: 10, Name: "ListQuicklist2"},
+	RedisOpCodeStreamListpacks2: {Ver: 10, Name: "StreamListpacks2"},
 
 	// RDB version 11, Redis 7.2.
-	RedisOpCodeSetListpack:      11,
-	RedisOpCodeStreamListpacks3: 11,
+	RedisOpCodeSetListpack:      {Ver: 11, Name: "SetListpack"},
+	RedisOpCodeStreamListpacks3: {Ver: 11, Name: "StreamListpacks3"},
 
-	// RDB version 12, Redis 7.4 and 8.0 through 8.4: the expiry of
-	// the hash fields and the slot sizes.
-	RedisOpCodeHashMetadataPreGa:   12,
-	RedisOpCodeHashListpackExPreGa: 12,
-	RedisOpCodeHashMetadata:        12,
-	RedisOpCodeHashListpackEx:      12,
-	RedisOpCodeSlotInfo:            12,
+	// RDB version 12, Redis 7.4.
+	RedisOpCodeHashMetadataPreGa:   {Ver: 12, Name: "HashMetadataPreGa"},
+	RedisOpCodeHashListpackExPreGa: {Ver: 12, Name: "HashListpackExPreGa"},
+	RedisOpCodeHashMetadata:        {Ver: 12, Name: "HashMetadata"},
+	RedisOpCodeHashListpackEx:      {Ver: 12, Name: "HashListpackEx"},
+	RedisOpCodeSlotInfo:            {Ver: 12, Name: "SlotInfo"},
 
-	// RDB version 13, Redis 8.6: the key metadata and the
-	// idempotency of the streams.
-	RedisOpCodeKeyMeta:          13,
-	RedisOpCodeStreamListpacks4: 13,
+	// RDB version 13, Redis 8.6.
+	RedisOpCodeKeyMeta:          {Ver: 13, Name: "KeyMeta"},
+	RedisOpCodeStreamListpacks4: {Ver: 13, Name: "StreamListpacks4"},
 
 	// RDB version 14, Redis 8.8.
-	RedisOpCodeStreamListpacks5: 14,
-	RedisOpCodeArray:            14,
+	RedisOpCodeStreamListpacks5: {Ver: 14, Name: "StreamListpacks5"},
+	RedisOpCodeArray:            {Ver: 14, Name: "Array"},
 
-	// RDB version 15, Redis 8.10: the hash templates. GCRA never
-	// shipped below, Redis keeps it behind a compile time flag and
-	// moved its number when the templates took the types 29 to 32.
-	RedisOpCodeHashTemplate:     15,
-	RedisOpCodeHashTmplLP:       15,
-	RedisOpCodeHashTmplLpRef:    15,
-	RedisOpCodeHashTmplArray:    15,
-	RedisOpCodeHashTmplArrayRef: 15,
-	RedisOpCodeGCRA:             15,
+	// RDB version 15, Redis 8.10.
+	RedisOpCodeHashTemplate:     {Ver: 15, Name: "HashTemplate"},
+	RedisOpCodeHashTmplLP:       {Ver: 15, Name: "HashTmplLP"},
+	RedisOpCodeHashTmplLpRef:    {Ver: 15, Name: "HashTmplLpRef"},
+	RedisOpCodeHashTmplArray:    {Ver: 15, Name: "HashTmplArray"},
+	RedisOpCodeHashTmplArrayRef: {Ver: 15, Name: "HashTmplArrayRef"},
+	RedisOpCodeGCRA:             {Ver: 15, Name: "GCRA"},
 }
 
 // Header returns the magic string of Redis and the version of the
@@ -216,120 +205,16 @@ func (d RedisDialect) WithVersion(version int) Dialect {
 	return RedisDialect{V: version}
 }
 
-// introduced returns the version of the RDB format that introduced the
-// op code, see [redisOpCodeVersion].
-func (RedisDialect) introduced(op OpCode) int {
-	return redisOpCodeVersion[op]
-}
-
 func (d RedisDialect) Commands() commands.Table {
 	return commands.RedisCommands
 }
 
-// OpCodeString returns the name of the op code in the Redis dialect.
-func (RedisDialect) OpCodeString(op OpCode) string {
-	switch op {
-	case RedisOpCodeEndOfRDB:
-		return "EndOfRDB"
-	case RedisOpCodeSelectDB:
-		return "SelectDB"
-	case RedisOpCodeExpirySeconds:
-		return "ExpirySeconds"
-	case RedisOpCodeExpiryMilli:
-		return "ExpiryMilli"
-	case RedisOpCodeResizeDB:
-		return "ResizeDB"
-	case RedisOpCodeAux:
-		return "Aux"
-	case RedisOpCodeFreq:
-		return "Freq"
-	case RedisOpCodeIdle:
-		return "Idle"
-	case RedisOpCodeModuleAux:
-		return "ModuleAux"
-	case RedisOpCodeFunc:
-		return "Func (deprecated)"
-	case RedisOpCodeFunc2:
-		return "Func2"
-	case RedisOpCodeSlotInfo:
-		return "SlotInfo"
-	case RedisOpCodeKeyMeta:
-		return "KeyMeta"
-	case RedisOpCodeHashTemplate:
-		return "HashTemplate"
-
-	case RedisOpCodeString:
-		return "String"
-	case RedisOpCodeList:
-		return "List"
-	case RedisOpCodeSet:
-		return "Set"
-	case RedisOpCodeZset:
-		return "Zset"
-	case RedisOpCodeHash:
-		return "Hash"
-	case RedisOpCodeZset2:
-		return "Zset2"
-	case RedisOpCodeModulePreGa:
-		return "ModulePreGa"
-	case RedisOpCodeModule2:
-		return "Module2"
-	case RedisOpCodeHashZipmap:
-		return "HashZipmap"
-	case RedisOpCodeListZiplist:
-		return "ListZiplist"
-	case RedisOpCodeSetIntset:
-		return "SetIntset"
-	case RedisOpCodeZsetZiplist:
-		return "ZsetZiplist"
-	case RedisOpCodeHashZiplist:
-		return "HashZiplist"
-	case RedisOpCodeListQuicklist:
-		return "ListQuicklist"
-	case RedisOpCodeStreamListpacks:
-		return "StreamListpacks"
-	case RedisOpCodeHashListpack:
-		return "HashListpack"
-	case RedisOpCodeZsetListpack:
-		return "ZsetListpack"
-	case RedisOpCodeListQuicklist2:
-		return "ListQuicklist2"
-	case RedisOpCodeStreamListpacks2:
-		return "StreamListpacks2"
-	case RedisOpCodeSetListpack:
-		return "SetListpack"
-	case RedisOpCodeStreamListpacks3:
-		return "StreamListpacks3"
-	case RedisOpCodeHashMetadataPreGa:
-		return "HashMetadataPreGa (deprecated)"
-	case RedisOpCodeHashListpackExPreGa:
-		return "HashListpackExPreGa (deprecated)"
-	case RedisOpCodeHashMetadata:
-		return "HashMetadata"
-	case RedisOpCodeHashListpackEx:
-		return "HashListpackEx"
-	case RedisOpCodeStreamListpacks4:
-		return "StreamListpacks4"
-	case RedisOpCodeStreamListpacks5:
-		return "StreamListpacks5"
-	case RedisOpCodeArray:
-		return "Array"
-	case RedisOpCodeHashTmplLP:
-		return "HashTmplLP"
-	case RedisOpCodeHashTmplLpRef:
-		return "HashTmplLpRef"
-	case RedisOpCodeHashTmplArray:
-		return "HashTmplArray"
-	case RedisOpCodeHashTmplArrayRef:
-		return "HashTmplArrayRef"
-	case RedisOpCodeGCRA:
-		return "GCRA"
-	case RedisOpCodeRamLru:
-		return "RamLru"
-	case RedisOpCodeSlotNum:
-		return "SlotNum"
+func (RedisDialect) OpCodeInfo(op OpCode) OpCodeInfo {
+	info, ok := redisOpCodeInfo[op]
+	if !ok {
+		return OpCodeInfo{Name: "Unknown"}
 	}
-	return "Unknown"
+	return info
 }
 
 // Decoder returns the token decoder of the Redis op code. It fails
@@ -342,7 +227,7 @@ func (d RedisDialect) Decoder(op OpCode) (TokenDecoder, error) {
 		return nil, errInvalidOpCode(d, op)
 	}
 	_, ver := d.Header()
-	return checkDecoder(d, op, handler, d.introduced(op), ver)
+	return checkDecoder(d, op, handler, d.OpCodeInfo(op), ver)
 }
 
 // redisDecoder returns the token decoder of the op code, ok reports
@@ -445,7 +330,7 @@ func (d RedisDialect) Encoder(op OpCode) (TokenEncoder, error) {
 		return nil, errInvalidOpCode(d, op)
 	}
 	_, ver := d.Header()
-	return checkEncoder(d, op, handler, d.introduced(op), ver)
+	return checkEncoder(d, op, handler, d.OpCodeInfo(op), ver)
 }
 
 // redisEncoder returns the token encoder of the op code, ok reports

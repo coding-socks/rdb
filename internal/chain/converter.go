@@ -520,7 +520,7 @@ func (k *keyState) value(out *[]any, t rdb.Token) error {
 	switch k.step {
 	case stepKey:
 		if t.Kind() != rdb.KindString {
-			return fmt.Errorf("rdbc: expected key name, got %v in %s", t.Kind(), k.dialect.OpCodeString(k.op))
+			return fmt.Errorf("rdbc: expected key name, got %v in %s", t.Kind(), k.dialect.OpCodeInfo(k.op))
 		}
 		*out = append(*out, jsonString(t.String()))
 		switch shapeOf(k.op) {
@@ -537,7 +537,7 @@ func (k *keyState) value(out *[]any, t rdb.Token) error {
 		}
 	case stepCount:
 		if t.Kind() != rdb.KindUint {
-			return fmt.Errorf("rdbc: expected count, got %v in %s", t.Kind(), k.dialect.OpCodeString(k.op))
+			return fmt.Errorf("rdbc: expected count, got %v in %s", t.Kind(), k.dialect.OpCodeInfo(k.op))
 		}
 		n := t.Uint64()
 		if k.op == rdb.RedisOpCodeHash || k.op == rdb.RedisOpCodeZset || k.op == rdb.RedisOpCodeZset2 {
@@ -580,19 +580,19 @@ func (k *keyState) valueToken(out *[]any, t rdb.Token) error {
 
 	case shapeHash:
 		if t.Kind() != rdb.KindString {
-			return fmt.Errorf("rdbc: expected hash field, got %v in %s", t.Kind(), k.dialect.OpCodeString(k.op))
+			return fmt.Errorf("rdbc: expected hash field, got %v in %s", t.Kind(), k.dialect.OpCodeInfo(k.op))
 		}
 		*out = append(*out, jsonString(t.String()))
 
 	case shapeZset:
 		if k.i&1 == 0 {
 			if t.Kind() != rdb.KindString {
-				return fmt.Errorf("rdbc: expected zset member, got %v in %s", t.Kind(), k.dialect.OpCodeString(k.op))
+				return fmt.Errorf("rdbc: expected zset member, got %v in %s", t.Kind(), k.dialect.OpCodeInfo(k.op))
 			}
 			*out = append(*out, jsonString(t.String()))
 		} else {
 			if t.Kind() != rdb.KindFloat64 {
-				return fmt.Errorf("rdbc: expected zset score, got %v in %s", t.Kind(), k.dialect.OpCodeString(k.op))
+				return fmt.Errorf("rdbc: expected zset score, got %v in %s", t.Kind(), k.dialect.OpCodeInfo(k.op))
 			}
 			*out = append(*out, scoreToken(t.Float64()))
 		}

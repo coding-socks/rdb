@@ -656,6 +656,15 @@ func decodeFloat64(raw []byte, code OpCode) float64 {
 	}
 }
 
+type OpCodeInfo struct {
+	Ver  int
+	Name string
+}
+
+func (i OpCodeInfo) String() string {
+	return fmt.Sprintf("Ver %d, Name %s", i.Ver, i.Name)
+}
+
 // Dialect abstracts the differences between implementations of the RDB
 // format. Every dialect owns its op code dispatch, the token handlers they
 // return are shared. Decoders detect the dialect of a file from its header
@@ -669,8 +678,8 @@ type Dialect interface {
 	// Header returns the magic string and the version the dialect
 	// represents. The header is padded to nine bytes.
 	Header() (magic string, version int)
-	// OpCodeString returns the name of the op code in this dialect.
-	OpCodeString(op OpCode) string
+	// OpCodeInfo returns the info object of the op code in this dialect.
+	OpCodeInfo(op OpCode) OpCodeInfo
 	// WithVersion returns the dialect bound to the version. A version
 	// the dialect does not support falls back to the newest one it
 	// supports.
@@ -690,17 +699,17 @@ type Dialect interface {
 // the version ver, introduced is the version that introduced the op
 // code. It fails with [ErrOpCodeTooNew] when introduced is newer than
 // ver.
-func checkDecoder(d Dialect, op OpCode, handler TokenDecoder, introduced, ver int) (TokenDecoder, error) {
-	if introduced > ver {
-		return nil, errOpCodeTooNew(d, op, introduced, ver)
+func checkDecoder(d Dialect, op OpCode, handler TokenDecoder, introduced OpCodeInfo, ver int) (TokenDecoder, error) {
+	if introduced.Ver > ver {
+		return nil, errOpCodeTooNew(d, op, introduced.Ver, ver)
 	}
 	return handler, nil
 }
 
 // checkEncoder is the write side of [checkDecoder].
-func checkEncoder(d Dialect, op OpCode, handler TokenEncoder, introduced, ver int) (TokenEncoder, error) {
-	if introduced > ver {
-		return nil, errOpCodeTooNew(d, op, introduced, ver)
+func checkEncoder(d Dialect, op OpCode, handler TokenEncoder, introduced OpCodeInfo, ver int) (TokenEncoder, error) {
+	if introduced.Ver > ver {
+		return nil, errOpCodeTooNew(d, op, introduced.Ver, ver)
 	}
 	return handler, nil
 }
@@ -708,14 +717,14 @@ func checkEncoder(d Dialect, op OpCode, handler TokenEncoder, introduced, ver in
 // errInvalidOpCode returns the error of an op code the dialect assigns
 // no meaning to.
 func errInvalidOpCode(d Dialect, op OpCode) error {
-	return fmt.Errorf("%w: %s (%x) in the %T dialect", ErrInvalidOpCode, d.OpCodeString(op), op, d)
+	return fmt.Errorf("%w: %s (%x) in the %T dialect", ErrInvalidOpCode, d.OpCodeInfo(op), op, d)
 }
 
 // errOpCodeTooNew returns the error of an op code that was introduced
 // in a version of the RDB format newer than the version of the
 // dialect.
 func errOpCodeTooNew(d Dialect, op OpCode, introduced, version int) error {
-	return fmt.Errorf("%w: %s (%x) was introduced in version %d, the dialect is version %d", ErrOpCodeTooNew, d.OpCodeString(op), op, introduced, version)
+	return fmt.Errorf("%w: %s (%x) was introduced in version %d, the dialect is version %d", ErrOpCodeTooNew, d.OpCodeInfo(op), op, introduced, version)
 }
 
 var (

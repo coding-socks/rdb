@@ -12,6 +12,19 @@ import (
 	"github.com/coding-socks/rdb/internal/crc64jones"
 )
 
+// Token is one key of a scan: its name, the value the DUMP command
+// returns and the time the key lives.
+type Token struct {
+	// Key is the name of the key.
+	Key []byte
+	// Payload is the value the DUMP command returns:
+	// [type][value][version 2][crc 8].
+	Payload []byte
+	// TTL is the time to live of the key in milliseconds, -1 when
+	// the key does not expire.
+	TTL int64
+}
+
 // ErrInvalidChecksum indicates that a payload could not be decoded
 // because the checksum at its end does not match its content.
 var ErrInvalidChecksum = errors.New("dump: invalid checksum")

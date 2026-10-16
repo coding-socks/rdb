@@ -76,9 +76,7 @@ The format described in this document follows Redis. The compatible technologies
 Valkey 7.x and 8.x write `REDIS` files of version `11` that are indistinguishable from Redis. With Valkey 9.0 the dialects split:
 
 - **Magic string and version.** Valkey 9.0 writes the magic string `VALKEY` followed by a three digit version number, for example `VALKEY080`, where Redis requires `REDIS`. The version numbering is offset as well: Valkey jumped to version `80` and reserves versions `12`-`79` for the incompatible Redis formats. With the default strict version check Valkey accepts `REDIS` files of version `1`-`11` and `VALKEY` files of version `80` and higher; it rejects a `REDIS` file of version `12` or higher, which includes every Redis 7.4 and 8.x file. Redis cannot read `VALKEY` files at all. `DUMP` payloads carry a version but no magic string; in strict mode Valkey accepts only versions `1`-`11` and `80`+ there.
-- **Value type `22` Hash2.** Valkey stores a hash with field-level expiration using type `22`, the number Redis uses for the deprecated [HashMetadataPreGa](#22-hashmetadataprega) record. The layouts differ, see below.
-- **Op code `243` SlotImport.** Valkey persists cluster slot import job state with op code `243`, the number Redis uses for [KeyMeta](#243-keymeta). The layouts differ, see below.
-- **Missing features.** Valkey has no equivalent for the Redis value types `23`-`33`: the hash with field expiration types `24`/`25`, the stream IDMP and XNACK forms `26`/`27` (streams are always saved as `21` StreamListpacks3), the `28` Array, the hash template types `29`-`32` and their `242` op code, and `33` GCRA.
+- **Missing features.** Valkey has no equivalent for the Redis value types `22`-`243`.
 - **Aux fields.** The version aux field is written as `valkey-ver` instead of `redis-ver`.
 
 As a safeguard, Valkey rejects every type and op code in the range `22`-`243` while loading a `REDIS` file.
@@ -287,8 +285,6 @@ The payload requires additional decoding.
 #### `243` KeyMeta
 
 Key metadata for module metadata classes. The metadata belongs to the key that follows it.
-
-Valkey incompatibility: Valkey 9.0 assigns op code `243` to SlotImport with a different layout, see [Valkey](#valkey).
 
 1. The first token is the OpCode `0xF3`.
 2. The number of metadata classes in length encoded form.
