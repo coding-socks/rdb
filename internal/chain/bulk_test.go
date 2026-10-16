@@ -38,7 +38,7 @@ func TestBulk_Scan(t *testing.T) {
 			wantServed: [][]string{
 				{"CONFIG", "GET", "notify-keyspace-events"},
 				{"PSUBSCRIBE", "__keyevent@0__:*"},
-				{"SCAN", "0", "COUNT", "100"},
+				{"SCAN", "0", "COUNT", "1000"},
 			},
 		},
 		{
@@ -49,7 +49,7 @@ func TestBulk_Scan(t *testing.T) {
 			wantServed: [][]string{
 				{"CONFIG", "GET", "notify-keyspace-events"},
 				{"PSUBSCRIBE", "__keyevent@0__:*"},
-				{"SCAN", "0", "COUNT", "100"},
+				{"SCAN", "0", "COUNT", "1000"},
 			},
 		},
 	}

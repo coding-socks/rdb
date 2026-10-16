@@ -218,8 +218,8 @@ func TestDumpSrc_Run(t *testing.T) {
 				w.Proto().WriteToken(resp.Int(1))
 			})
 			mux.HandleFunc("SCAN", func(w resp.ResponseWriter, cmd *resp.Command) {
-				if args := argsOf(cmd); !slices.Equal(args, []string{"SCAN", "0", "COUNT", "100"}) {
-					t.Errorf("the server served %v, want [SCAN 0 COUNT 100]", args)
+				if args := argsOf(cmd); !slices.Equal(args, []string{"SCAN", "0", "COUNT", "1000"}) {
+					t.Errorf("the server served %v, want [SCAN 0 COUNT 1000]", args)
 				}
 				w.Proto().WriteToken(resp.ArrayLen(2))
 				w.Proto().WriteToken(resp.Bytes([]byte("0")))
