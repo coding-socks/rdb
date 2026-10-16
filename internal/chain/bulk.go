@@ -89,7 +89,7 @@ type Bulk struct {
 // connection serves. The options configure it, the count of the SCAN
 // commands defaults to 100.
 func NewBulk(c *resp.Client, opts ...BulkOption) *Bulk {
-	b := &Bulk{c: c, count: []byte("100")}
+	b := &Bulk{c: c, count: []byte("1000")}
 	for _, opt := range opts {
 		opt(b)
 	}
