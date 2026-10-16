@@ -137,19 +137,15 @@ func (b *Bulk) Scan(ctx context.Context, visit func(key []byte)) error {
 	}
 	var spare []Reply // Used for recycling the queue slice.
 	for b.err == nil {
-		// The subscription ends when the walk is done, the replies
-		// of the commands it queued are read behind the end of it.
+		// The subscription ends when the scan is finished.
 		if b.done && b.subscribed {
-			if err := b.unsubscribe(ctx); err != nil {
-				return err
-			}
-			b.subscribed = false
+			b.unsubscribe()
 		}
 		if b.done && len(b.queue) == 0 {
 			return nil
 		}
-		// One SCAN of the walk is queued per round, the cursor of
-		// the next page is only known behind the reply of this one.
+		// One SCAN is queued per round. The cursor of the next page
+		// is only known from the next reply.
 		if !b.done {
 			b.scan()
 		}
@@ -164,7 +160,6 @@ func (b *Bulk) Scan(ctx context.Context, visit func(key []byte)) error {
 				return err
 			}
 			if t.Kind() == resp.KindPush {
-				// Intermediate push reply calls notify, not a reply.
 				if err := b.deliver(t, b.c.D); err != nil {
 					return err
 				}
@@ -183,32 +178,11 @@ func (b *Bulk) Scan(ctx context.Context, visit func(key []byte)) error {
 	return b.err
 }
 
-// command writes one command of the run and returns its first reply,
-// a push between the write and the reply reaches the callback of the
-// notifications.
-func (b *Bulk) command(ctx context.Context, args ...[]byte) (resp.Token, error) {
-	if err := b.c.WriteAndFlush(args...); err != nil {
-		return resp.Token{}, err
-	}
-	for {
-		t, err := b.c.ReadValue(ctx)
-		if err != nil {
-			return resp.Token{}, err
-		}
-		if t.Kind() != resp.KindPush {
-			return t, nil
-		}
-		if err := b.deliver(t, b.c.D); err != nil {
-			return resp.Token{}, err
-		}
-	}
-}
-
 func (b *Bulk) subscribe(ctx context.Context) error {
 	if b.c.Proto() != 3 {
 		return errors.New("chain: keyspace notifications need a RESP3 connection")
 	}
-	t, err := b.command(ctx, []byte("CONFIG"), []byte("GET"), []byte("notify-keyspace-events"))
+	t, err := b.c.Exec(ctx, []byte("CONFIG"), []byte("GET"), []byte("notify-keyspace-events"))
 	if err != nil {
 		return err
 	}
@@ -249,15 +223,11 @@ func (b *Bulk) subscribe(ctx context.Context) error {
 	return errors.New("chain: unexpected reply to the keyspace subscription")
 }
 
-func (b *Bulk) unsubscribe(ctx context.Context) error {
-	t, err := b.command(ctx, []byte("RESET"))
-	if err != nil {
-		return err
-	}
-	if t.Kind() == resp.KindError {
-		return t.Err()
-	}
-	return nil
+func (b *Bulk) unsubscribe() {
+	b.Send([][]byte{[]byte("RESET")}, func(t resp.Token, d resp.Decoder) error {
+		b.subscribed = false
+		return nil
+	})
 }
 
 func (b *Bulk) deliver(t resp.Token, d resp.Decoder) error {
