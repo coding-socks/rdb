@@ -195,6 +195,7 @@ type transferModel struct {
 	progress []progress.Model
 	spinner  spinner.Model
 	pr       chain.ProgressReporter
+	start    time.Time
 
 	reports []chain.ProgressReport
 }
@@ -218,6 +219,8 @@ func pollProgress(pr chain.ProgressReporter) tea.Cmd {
 
 func (m transferModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.start = time.Now()
 	case progressMsg:
 		m.reports = msg.reports
 		for len(m.progress) < len(m.reports) {
@@ -275,12 +278,12 @@ func (m transferModel) View() tea.View {
 func (m transferModel) stepView(i int) string {
 	r := m.reports[i]
 	if r.N != 0 {
-		return fmt.Sprintf("%s %d/%d %s", m.progress[i].View(), r.I, r.N, r.Unit)
+		return fmt.Sprintf("%s %d/%d %s, elapsed %.fs", m.progress[i].View(), r.I, r.N, r.Unit, time.Since(m.start).Seconds())
 	}
 	if r.I != 0 {
-		return fmt.Sprintf("%s %d %s", m.spinner.View(), r.I, r.Unit)
+		return fmt.Sprintf("%s %d %s, elapsed %.fs", m.spinner.View(), r.I, r.Unit, time.Since(m.start).Seconds())
 	}
-	return m.spinner.View()
+	return fmt.Sprintf("%s elapsed %.fs", m.spinner.View(), time.Since(m.start).Seconds())
 }
 
 type dialer interface {
