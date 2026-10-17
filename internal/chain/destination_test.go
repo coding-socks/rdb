@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/coding-socks/rdb"
 	"github.com/coding-socks/rdb/aof"
@@ -212,7 +213,8 @@ func Test_ServerDst_route(t *testing.T) {
 
 func Test_ServerDst_errorReply(t *testing.T) {
 	// The server of the test rejects the RESTORE of a key, the
-	// reply of it fails the flush of the batch.
+	// error reply of it is the error Finish reports when the replies
+	// of the batches are confirmed.
 	server := resptest.NewServer(t, func() resp.Handler {
 		mux := resp.NewServeMux()
 		mux.HandleFunc("RESTORE", reply(resp.Error("ERR invalid payload")))
@@ -224,9 +226,55 @@ func Test_ServerDst_errorReply(t *testing.T) {
 	if err := d.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
-	err := d.Process(dump.Token{Key: []byte("bar"), Payload: []byte("payload")})
+	for _, key := range []string{"bar", "foo"} {
+		err := d.Process(dump.Token{Key: []byte(key), Payload: []byte("payload")})
+		if err != nil && !strings.Contains(err.Error(), "invalid payload") {
+			t.Fatalf("Process() error = %v", err)
+		}
+	}
+	// The batches behind a failed one are consumed without reads,
+	// the first error is the one Finish reports.
+	err := d.Finish()
 	if err == nil || !strings.Contains(err.Error(), "invalid payload") {
-		t.Errorf("Process() error = %v, want it to contain %q", err, "invalid payload")
+		t.Errorf("Finish() error = %v, want it to contain %q", err, "invalid payload")
+	}
+}
+
+func Test_ServerDst_finishWaits(t *testing.T) {
+	// The reply of the last command of the transfer is slow, Finish
+	// returns when the reader of the connection confirmed it and not
+	// when the commands of the batches were written.
+	release := make(chan struct{})
+	server := resptest.NewServer(t, func() resp.Handler {
+		mux := resp.NewServeMux()
+		mux.HandleFunc("RESTORE", func(w resp.ResponseWriter, cmd *resp.Command) {
+			if argsOf(cmd)[1] == "slow" {
+				<-release
+			}
+			w.Proto().WriteToken(resp.String("OK"))
+		})
+		return mux
+	}())
+	d := NewServerDst(t.Context(), clusters.Single(server.Client()), KindDump)
+	d.SetBatchN(1)
+	if err := d.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
+		t.Fatalf("Process() error = %v", err)
+	}
+	for _, key := range []string{"fast", "slow"} {
+		if err := d.Process(dump.Token{Key: []byte(key), Payload: []byte("payload"), TTL: -1}); err != nil {
+			t.Fatalf("Process() error = %v", err)
+		}
+	}
+	finished := make(chan error, 1)
+	go func() { finished <- d.Finish() }()
+	select {
+	case err := <-finished:
+		t.Fatalf("Finish() returned before the last reply was read, error = %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	if err := <-finished; err != nil {
+		t.Errorf("Finish() error = %v", err)
 	}
 }
 

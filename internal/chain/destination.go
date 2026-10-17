@@ -12,6 +12,8 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coding-socks/rdb"
@@ -320,7 +322,13 @@ type ServerDst struct {
 	kind Kind
 
 	batchN  int
-	batches map[*resp.Client]int // the commands of a batch, one batch per connection
+	batches map[*resp.Client]int
+
+	readCh     map[*resp.Client]chan int
+	readCancel context.CancelFunc
+	stop       chan struct{}
+	readErr    atomic.Pointer[error]
+	wg         sync.WaitGroup
 }
 
 // NewServerDst starts the destination on the nodes of the cluster
@@ -333,6 +341,7 @@ func NewServerDst(ctx context.Context, c *clusters.Cluster, kind Kind) *ServerDs
 		batchN:  500,
 		c:       c,
 		batches: make(map[*resp.Client]int),
+		readCh:  make(map[*resp.Client]chan int),
 	}
 }
 
@@ -342,7 +351,47 @@ func (d *ServerDst) SetBatchN(n int) {
 	d.batchN = n
 }
 
+func (d *ServerDst) startRead() {
+	var readCtx context.Context
+	readCtx, d.readCancel = context.WithCancel(d.ctx)
+	d.stop = make(chan struct{})
+	for _, n := range d.c.All() {
+		ch := make(chan int, 128)
+		d.readCh[n.Conn] = ch
+		d.wg.Add(1)
+		go func(conn *resp.Client) {
+			defer d.wg.Done()
+			for n := range ch {
+				for range n {
+					t, err := conn.ReadValue(readCtx)
+					if err != nil {
+						d.fail(err)
+						return
+					}
+					if t.Kind() == resp.KindError {
+						d.fail(t.Err())
+						return
+					}
+					resp.SkipReply(conn.D, t)
+				}
+			}
+		}(n.Conn)
+	}
+}
+
+// fail records the first error of the replies and releases the sends
+// of the counts that wait behind it, the transfer is lost beyond the
+// first error.
+func (d *ServerDst) fail(err error) {
+	if d.readErr.CompareAndSwap(nil, &err) {
+		close(d.stop)
+	}
+}
+
 func (d *ServerDst) Process(t Token) error {
+	if err := d.readErr.Load(); err != nil {
+		return *err
+	}
 	switch tt := t.(type) {
 	default:
 		return fmt.Errorf("rdbc transfer: invalid token %T", t)
@@ -353,6 +402,7 @@ func (d *ServerDst) Process(t Token) error {
 		if tt.Dialect.WithVersion(0) != d.c.Dialect().WithVersion(0) {
 			return fmt.Errorf("rdbc transfer: invalid dialect %T", tt.Dialect)
 		}
+		d.startRead()
 		return nil
 	case dump.Token:
 		if d.kind&KindDump == 0 {
@@ -393,9 +443,6 @@ func (d *ServerDst) Process(t Token) error {
 		if err := n.Conn.Write(tt...); err != nil {
 			return err
 		}
-		if d.batches[n.Conn] >= d.batchN {
-			return d.flush(n.Conn)
-		}
 		return nil
 	}
 }
@@ -403,13 +450,30 @@ func (d *ServerDst) Process(t Token) error {
 func (d *ServerDst) Finish() error {
 	for _, n := range d.c.All() {
 		if err := d.flush(n.Conn); err != nil {
+			for _, ch := range d.readCh {
+				close(ch)
+			}
 			return err
 		}
+	}
+	for _, ch := range d.readCh {
+		close(ch)
+	}
+	d.wg.Wait()
+	if err := d.readErr.Load(); err != nil {
+		return *err
 	}
 	return nil
 }
 
-func (d *ServerDst) Abort(err error) {}
+func (d *ServerDst) Abort(err error) {
+	if d.readCancel != nil {
+		d.readCancel()
+	}
+	for _, ch := range d.readCh {
+		close(ch)
+	}
+}
 
 // restoreCommand builds the RESTORE command of a key of a scan. The
 // time to live of the key becomes the ttl argument of the command; a
@@ -428,8 +492,9 @@ func restoreCommand(t dump.Token) aof.Token {
 	}
 }
 
-// flush sends the commands of the batch of a connection and reads
-// their replies.
+// flush sends the commands of the batch of a connection and names
+// the count of their replies to the reader of the connection, the
+// send gives up when the reader died behind the first error.
 func (d *ServerDst) flush(conn *resp.Client) error {
 	batch := d.batches[conn]
 	delete(d.batches, conn)
@@ -439,15 +504,10 @@ func (d *ServerDst) flush(conn *resp.Client) error {
 	if batch == 0 {
 		return nil
 	}
-	for range batch {
-		t, err := conn.ReadValue(d.ctx)
-		if err != nil {
-			return err
-		}
-		if t.Kind() == resp.KindError {
-			return t.Err()
-		}
-		resp.SkipReply(conn.D, t)
+	select {
+	case d.readCh[conn] <- batch:
+	case <-d.stop:
+		return *d.readErr.Load()
 	}
 	return nil
 }
