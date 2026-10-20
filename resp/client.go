@@ -262,19 +262,18 @@ func (c *Client) ReadValue(ctx context.Context) (Token, error) {
 // blocks until the goroutine exited, so the caller can clear the read
 // deadline without a race.
 func AbortReadOn(ctx context.Context, c net.Conn) (stop func()) {
-	stopCh := make(chan struct{})
-	go func() {
-		select {
-		case <-ctx.Done():
-			c.SetReadDeadline(time.Now())
-		case <-stopCh:
-		}
-	}()
+	done := make(chan struct{})
+	cancel := context.AfterFunc(ctx, func() {
+		defer close(done)
+		c.SetReadDeadline(time.Now())
+	})
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			close(stopCh)
-			c.SetReadDeadline(time.Time{})
+			if !cancel() {
+				<-done
+				c.SetReadDeadline(time.Time{})
+			}
 		})
 	}
 }

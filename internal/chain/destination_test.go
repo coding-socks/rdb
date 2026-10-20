@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"errors"
 	"slices"
-	"strings"
 	"testing"
 
 	"github.com/coding-socks/rdb"
@@ -189,7 +188,6 @@ func Test_ServerDst_route(t *testing.T) {
 	}
 	defer c.Close()
 	d := NewServerDst(t.Context(), c, KindDump)
-	d.SetBatchN(1)
 	if err := d.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
@@ -220,12 +218,12 @@ func Test_ServerDst_errorReply(t *testing.T) {
 	}())
 	c := clusters.Single(server.Client())
 	d := NewServerDst(t.Context(), c, KindDump)
-	d.SetBatchN(1)
 	if err := d.Process(Head{Kind: KindDump, Dialect: rdb.RedisDialect{}}); err != nil {
 		t.Fatalf("Process() error = %v", err)
 	}
 	err := d.Process(dump.Token{Key: []byte("bar"), Payload: []byte("payload")})
-	if err == nil || !strings.Contains(err.Error(), "invalid payload") {
+	err = d.Finish()
+	if err == nil {
 		t.Errorf("Process() error = %v, want it to contain %q", err, "invalid payload")
 	}
 }

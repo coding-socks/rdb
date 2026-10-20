@@ -21,6 +21,7 @@ import (
 	"github.com/coding-socks/rdb/internal/chain"
 	"github.com/coding-socks/rdb/resp"
 	"golang.org/x/term"
+	"golang.org/x/time/rate"
 )
 
 func Transfer(ctx context.Context, args []string) error {
@@ -521,7 +522,7 @@ type dstServer struct {
 	dialer dialer
 	kind   chain.Kind
 	args   []string
-	batch  uint
+	ops    rate.Limit
 }
 
 func (d dstServer) Kind() chain.Kind { return d.kind }
@@ -534,7 +535,7 @@ func (d dstServer) Make(ctx context.Context) (chain.Dst, io.Closer, error) {
 		return nil, nil, err
 	}
 	dst := chain.NewServerDst(ctx, c, d.kind)
-	dst.SetBatchN(int(d.batch))
+	dst.SetOps(d.ops)
 	return dst, c, nil
 }
 
@@ -620,10 +621,10 @@ func parseDstCmd(cmd string, args []string) (dstMaker, error) {
 	switch cmd {
 	case "server+restore", "server+aof", "server":
 		var (
-			batch       uint
+			ops         float64
 			clusterFlag bool
 		)
-		fs.UintVar(&batch, "batch", 500, "commands to send to a server before reading the replies")
+		fs.Float64Var(&ops, "ops", 0, "operations per second")
 		fs.BoolVar(&clusterFlag, "cluster", false, "store every key on the primary shard of the cluster that serves its slot")
 		if err := fs.Parse(args); err != nil {
 			return nil, err
@@ -635,14 +636,9 @@ func parseDstCmd(cmd string, args []string) (dstMaker, error) {
 		if err != nil {
 			return nil, fmt.Errorf("rdbc transfer: invalid destination url: %w", err)
 		}
-		d := dstServer{args: fs.Args()[1:], dialer: dialerSingle{u: u}}
+		d := dstServer{args: fs.Args()[1:], dialer: dialerSingle{u: u}, ops: rate.Limit(ops)}
 		if clusterFlag {
 			d.dialer = dialerCluster{u: u}
-		}
-
-		d.batch = batch
-		if d.batch == 0 {
-			d.batch = 500
 		}
 
 		switch cmd {

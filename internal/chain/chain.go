@@ -75,46 +75,29 @@ type Src interface {
 	Run(ctx context.Context, dst Dst) error
 }
 
-// Dst receives the tokens of a chain.
+// Dst processes the tokens of a chain.
 //
 // The caller of the chain opens the resources of a destination and
 // closes them after [Run] returned; a destination opens nothing and
 // closes nothing.
 type Dst interface {
 	// Process receives one token of the chain. It returns an error
-	// when it cannot receive the token, which fails the transfer.
-	// Process may be called again after it returned an error; it
-	// returns without effect then.
+	// when it encounters a problem, which fails the transfer.
+	// Process may be asynchronous and report an error for an earlier
+	// Token.
 	Process(t Token) error
-	// Finish ends the stream. It flushes what the destination
-	// holds back and commits the tokens it received.
-	// [Run] calls it when the source ended cleanly.
+	// Finish ends the stream. It waits for the resources to complete
+	// any remaining background processes. It returns an error
+	// if the destination encountered a problem.
 	Finish() error
-	// Abort releases the destination without a commit: the stream
-	// failed. [Run] calls it after an error of the source, of the
-	// context, or of the chain; the destination has released
-	// itself then, and Abort returns without effect.
+	// Abort releases the destination without a commit.
 	Abort(err error)
 }
 
-// Middleware wraps a [Dst] in another Dst. The constructors of the
-// converters and the filters return one: the configuration of the
-// transformation is bound to the constructor, the destination it
-// wraps is the argument. The caller of [Run] applies the middlewares
-// to the destination, from the destination up, so the middleware it
-// applies first passes its tokens first.
+// Middleware wraps a [Dst] in another Dst.
 type Middleware func(Dst) Dst
 
-// Run pushes the tokens of src into dst: the first token of the
-// stream is the [Head] of the source, the middlewares of the
-// transformation are the wrapping of dst the caller applied.
-//
-// A source that ended cleanly, it returned no error or io.EOF,
-// commits the destination with [Dst.Finish]; a source that failed, or
-// whose context ended, aborts it with [Dst.Abort]. Run returns the
-// first error of the transfer, nil when the context ended. The
-// resources of the ends belong to the caller: it opens them before
-// Run and closes them after it returned.
+// Run pushes the tokens of src into dst.
 func Run(ctx context.Context, src Src, dst Dst) error {
 	err := src.Run(ctx, dst)
 	switch {

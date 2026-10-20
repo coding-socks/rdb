@@ -12,6 +12,8 @@ import (
 	"math/rand/v2"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coding-socks/rdb"
@@ -19,6 +21,7 @@ import (
 	"github.com/coding-socks/rdb/clusters"
 	"github.com/coding-socks/rdb/dump"
 	"github.com/coding-socks/rdb/resp"
+	"golang.org/x/time/rate"
 )
 
 // RecorderDst records the tokens it receives, the end of the stream,
@@ -315,34 +318,72 @@ func (d *ManifestDst) Abort(err error) {
 // accept [KindDump] and [KindAOF] tokens. The supported token
 // kind list can be reduced using kind.
 type ServerDst struct {
-	ctx  context.Context
-	c    *clusters.Cluster
-	kind Kind
+	ctx    context.Context // cancelled with the first error; also bounds reads
+	cancel context.CancelCauseFunc
+	c      *clusters.Cluster
+	kind   Kind
 
-	batchN  int
-	batches map[*resp.Client]int // the commands of a batch, one batch per connection
+	limit   *rate.Limiter
+	readN   atomic.Int64
+	drained chan struct{} // cap 1, poked when readN hits 0
+	wg      sync.WaitGroup
 }
 
 // NewServerDst starts the destination on the nodes of the cluster
-// with the kinds it takes. The cluster owns the connections of its
-// nodes, and the context bounds the reads of the replies.
+// with the kinds it takes.
 func NewServerDst(ctx context.Context, c *clusters.Cluster, kind Kind) *ServerDst {
+	ctx, cancel := context.WithCancelCause(ctx)
 	return &ServerDst{
 		ctx:     ctx,
+		cancel:  cancel,
 		kind:    kind & (KindDump | KindAOF),
-		batchN:  500,
 		c:       c,
-		batches: make(map[*resp.Client]int),
+		drained: make(chan struct{}, 1),
 	}
 }
 
-// SetBatchN sets the number of commands a batch sends. It defaults
-// to 500.
-func (d *ServerDst) SetBatchN(n int) {
-	d.batchN = n
+// SetOps configures the maximum command per second. 0 means disabled.
+func (d *ServerDst) SetOps(ops rate.Limit) {
+	if ops == 0 {
+		d.limit = nil
+		return
+	}
+	d.limit = rate.NewLimiter(ops, max(10, int(ops/10)))
+}
+
+func (d *ServerDst) startRead() {
+	for _, n := range d.c.All() {
+		conn := n.Conn
+		d.wg.Go(func() {
+			for {
+				t, err := conn.ReadValue(d.ctx)
+				if err != nil {
+					d.cancel(err)
+					return
+				}
+				if t.Kind() == resp.KindError {
+					d.cancel(t.Err())
+					return
+				}
+				resp.SkipReply(conn.D, t)
+				switch i := d.readN.Add(-1); {
+				case i < 0:
+					panic("rdbc transfer: readN < 0")
+				case i == 0:
+					select {
+					case d.drained <- struct{}{}:
+					default:
+					}
+				}
+			}
+		})
+	}
 }
 
 func (d *ServerDst) Process(t Token) error {
+	if err := d.ctx.Err(); err != nil {
+		return err
+	}
 	switch tt := t.(type) {
 	default:
 		return fmt.Errorf("rdbc transfer: invalid token %T", t)
@@ -353,6 +394,7 @@ func (d *ServerDst) Process(t Token) error {
 		if tt.Dialect.WithVersion(0) != d.c.Dialect().WithVersion(0) {
 			return fmt.Errorf("rdbc transfer: invalid dialect %T", tt.Dialect)
 		}
+		d.startRead()
 		return nil
 	case dump.Token:
 		if d.kind&KindDump == 0 {
@@ -362,12 +404,12 @@ func (d *ServerDst) Process(t Token) error {
 		if err != nil {
 			return err
 		}
-		d.batches[n.Conn]++
+		if d.limit != nil {
+			d.limit.Wait(d.ctx)
+		}
+		d.readN.Add(1)
 		if err := n.Conn.Write(restoreCommand(tt)...); err != nil {
 			return err
-		}
-		if d.batches[n.Conn] >= d.batchN {
-			return d.flush(n.Conn)
 		}
 		return nil
 	case aof.Token:
@@ -389,27 +431,41 @@ func (d *ServerDst) Process(t Token) error {
 				return err
 			}
 		}
-		d.batches[n.Conn]++
+		if d.limit != nil {
+			d.limit.Wait(d.ctx)
+		}
+		d.readN.Add(1)
 		if err := n.Conn.Write(tt...); err != nil {
 			return err
-		}
-		if d.batches[n.Conn] >= d.batchN {
-			return d.flush(n.Conn)
 		}
 		return nil
 	}
 }
 
 func (d *ServerDst) Finish() error {
+	defer func() {
+		d.cancel(nil)
+		d.wg.Wait()
+	}()
 	for _, n := range d.c.All() {
 		if err := d.flush(n.Conn); err != nil {
 			return err
 		}
 	}
-	return nil
+	for d.readN.Load() > 0 {
+		select {
+		case <-d.drained:
+		case <-d.ctx.Done():
+			return context.Cause(d.ctx)
+		}
+	}
+	return context.Cause(d.ctx)
 }
 
-func (d *ServerDst) Abort(err error) {}
+func (d *ServerDst) Abort(err error) {
+	d.cancel(err)
+	d.wg.Wait()
+}
 
 // restoreCommand builds the RESTORE command of a key of a scan. The
 // time to live of the key becomes the ttl argument of the command; a
@@ -431,23 +487,8 @@ func restoreCommand(t dump.Token) aof.Token {
 // flush sends the commands of the batch of a connection and reads
 // their replies.
 func (d *ServerDst) flush(conn *resp.Client) error {
-	batch := d.batches[conn]
-	delete(d.batches, conn)
 	if err := conn.Flush(); err != nil {
 		return err
-	}
-	if batch == 0 {
-		return nil
-	}
-	for range batch {
-		t, err := conn.ReadValue(d.ctx)
-		if err != nil {
-			return err
-		}
-		if t.Kind() == resp.KindError {
-			return t.Err()
-		}
-		resp.SkipReply(conn.D, t)
 	}
 	return nil
 }

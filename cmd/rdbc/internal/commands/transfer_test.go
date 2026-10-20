@@ -210,10 +210,6 @@ func Test_parseDstCmd(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name: "a server destination takes the batch size ", arg: "server+restore", args: []string{"-batch", "20", "keydb://host:6379"},
-			want: dstServer{kind: chain.KindDump, dialer: dialerSingle{u: &url.URL{Scheme: "keydb", Host: "host:6379"}}, batch: 20, args: []string{}},
-		},
-		{
 			name: "a missing destination url", arg: "server+restore",
 			wantErr: true,
 		},
@@ -223,19 +219,19 @@ func Test_parseDstCmd(t *testing.T) {
 		},
 		{
 			name: "server+restore", arg: "server+restore", args: []string{"redis://host:6379"},
-			want: dstServer{kind: chain.KindDump, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 500, args: []string{}},
+			want: dstServer{kind: chain.KindDump, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{}},
 		},
 		{
 			name: "server+aof", arg: "server+aof", args: []string{"redis://host:6379"},
-			want: dstServer{kind: chain.KindAOF, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 500, args: []string{}},
+			want: dstServer{kind: chain.KindAOF, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{}},
 		},
 		{
 			name: "server", arg: "server", args: []string{"redis://host:6379"},
-			want: dstServer{kind: chain.KindDump | chain.KindAOF, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 500, args: []string{}},
+			want: dstServer{kind: chain.KindDump | chain.KindAOF, dialer: dialerSingle{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{}},
 		},
 		{
-			name: "a server destination takes the -cluster flag", arg: "server+restore", args: []string{"-cluster", "-batch", "20", "redis://host:6379"},
-			want: dstServer{kind: chain.KindDump, dialer: dialerCluster{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, batch: 20, args: []string{}},
+			name: "a server destination takes the -cluster flag", arg: "server+restore", args: []string{"-cluster", "redis://host:6379"},
+			want: dstServer{kind: chain.KindDump, dialer: dialerCluster{u: &url.URL{Scheme: "redis", Host: "host:6379"}}, args: []string{}},
 		},
 	}
 	for _, tt := range tests {
